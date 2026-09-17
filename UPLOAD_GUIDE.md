@@ -14,13 +14,12 @@
    git add .
    git commit -m "IUM teaching series v1"
    git branch -M main
-   git remote add origin https://github.com/<你的用户名>/IUM_teaching_colab.git
+   git remote add origin https://github.com/wangyiquan1010-coder/IUM_teaching_colab.git
    git push -u origin main
    ```
    （或者用 GitHub Desktop 拖进去，一样的。）
-3. **替换用户名占位符**：全局把 `GITHUB_USERNAME` 换成你的 GitHub 用户名——
-   出现在 `README.md`（4 个徽章链接）和 4 个 notebook 的第一个代码 cell
-   （`git clone` 行）。可以用 VS Code 全局替换，或告诉我用户名我来改。
+3. ~~替换用户名占位符~~ **已完成**：README 徽章和 4 个 notebook 的 clone 行
+   已全部指向 `wangyiquan1010-coder/IUM_teaching_colab`。
 4. **验证**：打开 README 里的 Notebook 1 徽章 → Colab 打开 → Runtime → Run all
    → 第一个 cell 会自动 clone 仓库并切换目录，全程应无报错。
    Notebook 3 建议先 Runtime → Change runtime type → **T4 GPU**（训练 ~4 分钟；

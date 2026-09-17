@@ -22,12 +22,12 @@ time, from sound alone.
 | 3 | `03_learning_and_leakage` | 344-d representation; **data leakage**; LOIO CV; attention-fusion network | live leakage demo (random split vs LOIO) — a true peer-review story; full LOIO training run |
 | 4 | `04_interpretation_and_deployment` | attention gates; feature importance; robustness | gate heatmaps ("does sensing beat the recipe?"); **virtual-sensor dashboard** |
 
-Open in Colab (after the repo is on GitHub — replace `GITHUB_USERNAME`):
+Open in Colab (live once the repo is pushed to GitHub):
 
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/GITHUB_USERNAME/IUM_teaching_colab/blob/main/notebooks/01_ultrasound_meets_3dprinting.ipynb) Notebook 1
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/GITHUB_USERNAME/IUM_teaching_colab/blob/main/notebooks/02_physics_informed_features.ipynb) Notebook 2
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/GITHUB_USERNAME/IUM_teaching_colab/blob/main/notebooks/03_learning_and_leakage.ipynb) Notebook 3
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/GITHUB_USERNAME/IUM_teaching_colab/blob/main/notebooks/04_interpretation_and_deployment.ipynb) Notebook 4
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/01_ultrasound_meets_3dprinting.ipynb) Notebook 1
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/02_physics_informed_features.ipynb) Notebook 2
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/03_learning_and_leakage.ipynb) Notebook 3
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/04_interpretation_and_deployment.ipynb) Notebook 4
 
 Everything (code + 12 MB of data) ships in this repository — no extra downloads.
 Notebook 3's training runs in ~4 min on a Colab GPU (Runtime → Change runtime

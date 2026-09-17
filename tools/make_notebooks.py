@@ -13,7 +13,7 @@ BOOT = '''\
 import os, sys
 
 if "google.colab" in sys.modules and not os.path.exists("src"):
-    !git clone -q https://github.com/GITHUB_USERNAME/IUM_teaching_colab.git
+    !git clone -q https://github.com/wangyiquan1010-coder/IUM_teaching_colab.git
     %cd IUM_teaching_colab
 
 # find the repo root (folder that contains src/) from wherever we run
