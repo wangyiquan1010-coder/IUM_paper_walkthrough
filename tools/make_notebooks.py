@@ -139,16 +139,19 @@ Plot each layer's final waveform with a vertical offset. **B1 stays put; B2
 marches right** as the part grows ~100 µm per layer.
 """),
 ("code", """\
-fig, ax = plt.subplots(figsize=(10, 8))
-step = 10                                        # decimate for speed
+fig, ax = plt.subplots(figsize=(11, 8))
+sl = slice(13800, 21500, 3)                      # zoom to the echo region
 for li in range(wf_30.shape[0]):
-    x = wf_30[li, -1, ::step]
-    ax.plot(t_us[::step], x/6e4 + li + 1, lw=0.4, color="k")
-ax.plot(t_us[track30.b1_idx], track30.layer, "r.-", ms=4, lw=1, label="B1 (fixed)")
-ax.plot(t_us[track30.b2_idx], track30.layer, "g.-", ms=4, lw=1, label="B2 (advancing)")
-ax.set(xlim=(5, 10), xlabel="time (µs)", ylabel="layer index",
-       title="Waterfall: the part growing, one echo at a time")
-ax.legend(); plt.tight_layout(); plt.show()
+    x = wf_30[li, -1, sl].astype(float)
+    x = x - np.median(x)                         # remove baseline offset
+    ax.plot(t_us[sl], x / 3.2e4 + li + 1, lw=0.6,
+            color=plt.cm.viridis(li / (wf_30.shape[0] - 1)))
+ax.plot(t_us[track30.b1_idx], track30.layer, "r.-", ms=5, lw=1.2, label="B1 (fixed)")
+ax.plot(t_us[track30.b2_idx], track30.layer, "g.-", ms=5, lw=1.2, label="B2 (advancing)")
+ax.set(xlim=(t_us[sl][0], t_us[sl][-1]), ylim=(-0.8, wf_30.shape[0] + 2),
+       xlabel="time (µs)", ylabel="layer index",
+       title="Waterfall: the part growing, one echo at a time (color = layer)")
+ax.legend(loc="upper left"); plt.tight_layout(); plt.show()
 """),
 ("md", """\
 ### Interactive 3D waterfall (rotate me!)
