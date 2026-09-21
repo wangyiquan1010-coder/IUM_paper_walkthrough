@@ -36,11 +36,19 @@ INTENSITY_MW = {10: 10.70, 20: 12.57, 30: 14.35, 40: 15.93, 50: 17.48,
 # 1. Data loading
 # ----------------------------------------------------------------------------
 def load_sample(npz_path):
-    """Load one printed sample's waveforms.
+    """Load one printed sample's waveforms from a compressed .npz archive.
+
+    The archive holds one array per printed layer (extracted read-only from the
+    paper's raw oscilloscope CSV files) plus a JSON metadata record. The first
+    layer of every print is exposed for 21 s instead of 15 s and therefore has
+    7 frames; we keep its reference frame plus the last five so that every
+    layer has the same 6 comparable frames.
 
     Returns
     -------
-    wf   : np.ndarray (n_layers, n_frames, N_POINTS)  raw amplitudes
+    wf   : np.ndarray (n_layers, 6 frames, N_POINTS)  raw amplitudes [a.u.]
+           frame 0 = reference (before exposure), frames 1-5 = during the 15 s
+           exposure, 3 s apart.
     meta : dict  (n_layers, intensity_pct, intensity_mw_cm2, fs_hz, ...)
     """
     z = np.load(npz_path, allow_pickle=False)
@@ -80,7 +88,12 @@ B1_WIN = (14000, 14800)
 
 
 def _env(x):
-    """Cheap envelope: |x - median| smoothed."""
+    """Cheap envelope: |x - median| smoothed over a 101-sample (40 ns) window.
+
+    An ultrasonic echo is an oscillating burst, so its individual peaks are
+    ambiguous; the envelope has a single clear maximum that we can call "the
+    arrival". The median subtraction removes the DC offset of the digitizer.
+    """
     a = np.abs(x - np.median(x))
     k = 101
     ker = np.ones(k) / k
@@ -100,6 +113,12 @@ def find_b2(wf_1d, b1_idx, prev_b2=None, search_after=500, search_span=1600):
     Tracking mode (prev_b2 given): B2 must advance, but by at most ~800 samples
     per layer (a 100-um layer adds ~330 samples of round-trip in liquid resin;
     the cap keeps the tracker from jumping to the later B3 echo).
+
+    Why the cap matters: B3 is the same round trip made twice, so it sits a
+    whole ToF (>3000 samples here) further right. Without an advance limit a
+    greedy peak search lands on it and the reported ToF doubles.
+
+    All indices and windows are in SAMPLES (0.4 ns each).
     """
     e = _env(wf_1d)
     if prev_b2 is None:
@@ -148,8 +167,17 @@ def layer_features(wf_layer, b1_idx, b2_idx, win=800):
     """Compute the teaching subset of layer-wise features for one layer.
 
     wf_layer : (n_frames, N)   all frames of this layer
-    Uses the final frame for across-layer features and all frames for the
-    within-layer (frame-to-frame) features.
+    b1_idx, b2_idx : tracked echo positions for this layer [sample index]
+    win      : half-width of the analysis window around B2 [samples]; 800
+               samples = 0.32 us, wide enough to hold the whole echo burst.
+
+    Two scales, as in the paper's framework:
+      * across-layer features use the FINAL frame only (end of exposure) ->
+        ToF [us], B2/B1 envelope amplitude ratio [-], RMS energy [a.u.],
+        center frequency and bandwidth [Hz];
+      * within-layer features use ALL frames of the same, frozen window ->
+        frame_diff_rms and within_layer_std [a.u.]. The acoustic path cannot
+        change during one exposure, so these are geometry-immune cure probes.
     """
     x = wf_layer[-1].astype(float)
     e = _env(x)
@@ -214,7 +242,21 @@ def seq_columns(df):
 
 
 def assemble_arrays(train_df, test_df):
-    """Leak-free packing: scalers fit on TRAIN only (mirrors FourBranch_DataIO)."""
+    """Pack one LOIO fold into the three branch inputs of the network.
+
+    LEAK-FREE RULE: every StandardScaler is fitted on the TRAINING partition
+    only and then applied to both partitions (mirrors FourBranch_DataIO in the
+    paper's code). Fitting a scaler on all data would let test statistics
+    influence training and quietly inflate the reported scores.
+
+    Returns (train_pack, test_pack, sc_y) where each pack holds
+        stats : (n, 12)              part-scale descriptors, standardised
+        proc  : (n, 2)               layer count + intensity, standardised
+        seq   : (n, 30, 11)          layer-wise features, zero-padded
+        y     : (n, 3)               labels, standardised
+    and sc_y is the label scaler, needed to convert predictions back into
+    physical units (see `predict`).
+    """
     from sklearn.preprocessing import StandardScaler
     stats_tr = part_scale_stats(train_df)
     stats_te = part_scale_stats(test_df)

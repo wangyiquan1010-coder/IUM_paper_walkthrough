@@ -10,13 +10,19 @@ os.makedirs(NBDIR, exist_ok=True)
 
 BOOT = '''\
 # --- Setup (works both locally and on Google Colab) ---------------------------
+# On Colab the notebook starts in an empty machine, so we first download
+# ("clone") the whole course repository, which contains the data, the helper
+# library and the figures. Locally the files are already next to the notebook,
+# so the clone is skipped.
 import os, sys
 
 if "google.colab" in sys.modules and not os.path.exists("src"):
     !git clone -q https://github.com/wangyiquan1010-coder/IUM_teaching_colab.git
     %cd IUM_teaching_colab
 
-# find the repo root (folder that contains src/) from wherever we run
+# Walk up the folder tree until we find the repository root (the folder that
+# contains src/). This makes every later path such as "data/feature11.csv"
+# work no matter where the notebook was launched from.
 _here = os.getcwd()
 while not os.path.isdir(os.path.join(_here, "src")):
     _parent = os.path.dirname(_here)
@@ -24,16 +30,36 @@ while not os.path.isdir(os.path.join(_here, "src")):
         raise FileNotFoundError("repo root with src/ not found")
     _here = _parent
 os.chdir(_here)
-sys.path.insert(0, "src")
+sys.path.insert(0, "src")            # so that "import ium_utils" works
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np                   # arrays / signal math
+import pandas as pd                  # tables (features, labels, results)
+import matplotlib.pyplot as plt      # static plots
 from matplotlib import rc
-rc("animation", html="jshtml")     # render animations as interactive players
-import ium_utils as iu
+rc("animation", html="jshtml")       # render animations as interactive players
+import ium_utils as iu               # OUR course library (see src/ium_utils.py)
 print("setup ok — repo root:", _here)
 '''
+
+SETUP_MD = """\
+### Before we run anything: the setup cell
+
+**Input** — nothing from your side. On Google Colab this cell downloads the
+course repository (`github.com/wangyiquan1010-coder/IUM_teaching_colab`), which
+ships *all* the data used in this series; running locally, it just finds the
+repository folder you already have.
+
+**What this cell does** — clones the repo if needed, moves the working
+directory to the repository root (so that every later path like
+`data/feature11.csv` resolves), and imports the four things we use everywhere:
+`numpy` (signal math), `pandas` (tables), `matplotlib` (plots) and
+`ium_utils` — **our own teaching library**, a clean, read-only refactor of the
+paper's code that lives in `src/ium_utils.py`. Feel free to open that file at
+any point: every function used in the notebooks is defined there, with comments.
+
+**Output** — the imported modules plus a confirmation line printing the
+repository root. Nothing is computed yet.
+"""
 
 
 def nb(cells, title):
@@ -76,25 +102,71 @@ turns the printer into its own sensor. In this notebook you will:
 *The DLP-IUM platform: the Rexolite printhead doubles as the transducer's delay
 line, so the part is monitored continuously without interrupting printing.*
 """),
+("md", """\
+## Key terms before we start
+
+If you have never worked with ultrasound, these six words are all you need:
+
+| term | meaning in this notebook |
+|---|---|
+| **A-scan** | one recorded waveform: amplitude versus time, from a single ultrasonic pulse. Here each A-scan has 62,509 points sampled at 2.5 GHz, i.e. one point every **0.4 ns**, covering ~25 µs. |
+| **frame** | one A-scan captured at one moment. We record **6 frames per printed layer**: a reference before the light turns on, then five during the 15 s exposure (3 s apart). |
+| **echo (B1, B2, B3)** | a reflected pulse returning from an interface. B1 comes back from the printhead's own bottom face, B2 from the bottom of the resin vat after travelling through the part, B3 is the same trip made twice. |
+| **envelope** | a smoothed version of `|signal|`. An ultrasonic echo is an oscillating burst, so its individual peaks are ambiguous; the envelope has one clear maximum, which is what we pick as "the echo arrival". |
+| **ToF (time of flight)** | the time between two echoes, here B1 → B2, in microseconds. It is our first physical measurement: it grows as the part grows and shrinks as the material cures and becomes faster. |
+| **round trip** | the pulse goes *down and back*, so a ToF of 1 µs corresponds to **twice** the physical path. Always divide by 2 before converting ToF into a distance. |
+"""),
+("md", SETUP_MD),
 ("code", BOOT),
 ("md", """\
-## 1. The data
+## 1. The data — where the waveforms come from
 
-We use three printed samples (a small teaching subset of the paper's 50-sample
-dataset). Each `.npz` holds all layers of one print; each layer has **6 frames**:
-one reference waveform plus five captured during the 15 s exposure (3 s apart).
+The paper's dataset contains 50 printed cylinders (5 layer counts × 10 exposure
+intensities). Shipping every raw waveform would be hundreds of megabytes, so
+this course repository carries **three representative prints**, already
+converted from the original oscilloscope CSV files into compressed `.npz`
+archives (see `tools/extract_teaching_data.py` and `DATA_CARD.md` for the exact
+provenance — the original dataset was never modified).
 
 | file | layers | exposure intensity |
 |---|---|---|
 | `waveforms_15L_I1.npz` | 15 | I1 = 10.70 mW/cm² (weak cure) |
 | `waveforms_15L_I7.npz` | 15 | I7 = 20.16 mW/cm² (strong cure) |
 | `waveforms_30L_I7.npz` | 30 | I7 = 20.16 mW/cm² |
+
+Two of them are printed with the **same geometry but different light intensity**
+(15L @ I1 vs 15L @ I7) — that pair is our controlled comparison throughout the
+notebook. The third is a taller print used for the growth animations.
+
+---
+
+**Input** — the three `.npz` files in `data/`. Each archive stores one array per
+printed layer plus a small JSON metadata record (layer count, intensity in % of
+maximum lamp power and in mW/cm², sampling rate).
+
+**What this cell does** — `iu.load_sample()` reads an archive and stacks the
+layers into one array of shape **(layers, frames, points)**. It also fixes a
+quirk of the dataset: the *first* layer of every print is exposed for 21 s
+instead of 15 s and therefore has 7 frames, so the loader keeps the reference
+frame plus the last five to make every layer directly comparable.
+`iu.time_axis_us()` builds the matching time axis in microseconds.
+
+**Output** — `wf_i1`, `wf_i7`, `wf_30` (raw amplitudes, arbitrary oscilloscope
+units), their metadata dictionaries, and `t_us` — the shared time axis. These
+variables are used by every remaining cell of this notebook.
 """),
 ("code", """\
-wf_i1, meta_i1 = iu.load_sample("data/waveforms_15L_I1.npz")
-wf_i7, meta_i7 = iu.load_sample("data/waveforms_15L_I7.npz")
-wf_30, meta_30 = iu.load_sample("data/waveforms_30L_I7.npz")
+# Each call returns (waveforms, metadata).
+#   waveforms : float array of shape (n_layers, 6 frames, 62509 points)
+#   metadata  : dict with n_layers, intensity_pct, intensity_mw_cm2, fs_hz ...
+wf_i1, meta_i1 = iu.load_sample("data/waveforms_15L_I1.npz")   # 15 layers, weak cure
+wf_i7, meta_i7 = iu.load_sample("data/waveforms_15L_I7.npz")   # 15 layers, strong cure
+wf_30, meta_30 = iu.load_sample("data/waveforms_30L_I7.npz")   # 30 layers, strong cure
+
+# Time axis shared by all waveforms: point index -> microseconds.
+# 2.5 GHz sampling means one point every 1/2.5e9 s = 0.4 ns.
 t_us = iu.time_axis_us()
+
 print("shape (layers, frames, points):", wf_i1.shape)
 print("sampling: 2.5 GHz  ->  dt = 0.4 ns;  window =", round(t_us[-1], 1), "us")
 """),
@@ -107,16 +179,35 @@ vat bottom, and back. Three echo families matter:
 - **B1** — the printhead's internal round trip. It never moves: a built-in reference.
 - **B2** — first round trip through the growing sample: **the information carrier**.
 - **B3** — a second, weaker round trip (arrives ≈ 2×ToF after B1): redundant.
+
+---
+
+**Input** — `wf_30`, the 30-layer print loaded above. We will look at **one**
+waveform out of its 180: layer 15, final frame (`wf_30[14, -1]`, remembering
+that Python counts from 0).
+
+**What this cell does** — first it runs the echo tracker over the *whole* print,
+because B2 can only be located reliably by following it from layer to layer
+(picking it blindly in a single waveform is what makes beginners land on B3 by
+mistake — the tracker is dissected in Notebook 2). Then it plots the chosen
+A-scan and marks the tracked B1 and B2 positions, plus the expected position of
+B3, and converts the B1→B2 index difference into a time of flight.
+
+**Output** — `track30`, a small table with `layer`, `b1_idx`, `b2_idx` and
+`tof_us` for each of the 30 layers (reused by the waterfall, the animation and
+the widget), the annotated A-scan figure, and a printed ToF of ≈1.29 µs.
 """),
 ("code", """\
-# Track B1/B2 through the whole 30-layer print (details of the tracker in NB2),
-# then look at one A-scan with the tracked picks.
+# Track B1/B2 through the whole 30-layer print. The tracker locates B1 inside a
+# fixed index window (the printhead round trip never changes) and then follows
+# B2 forward layer by layer, allowing it to advance by at most ~800 samples per
+# layer so that it can never jump onto the later, weaker B3 echo.
 track30 = iu.track_sample(wf_30)
 
-x = wf_30[14, -1]                       # layer 15 of the 30-layer print
-b1 = int(track30.b1_idx[14])
-b2 = int(track30.b2_idx[14])
-b3_approx = b1 + 2 * (b2 - b1)
+x = wf_30[14, -1]                       # layer 15 (0-based index 14), final frame
+b1 = int(track30.b1_idx[14])            # tracked B1 position, in sample index
+b2 = int(track30.b2_idx[14])            # tracked B2 position, in sample index
+b3_approx = b1 + 2 * (b2 - b1)          # B3 = the same trip made twice
 
 fig, ax = plt.subplots(figsize=(11, 4))
 ax.plot(t_us, x, lw=0.5, color="k")
@@ -125,10 +216,12 @@ for idx, name, c in [(b1, "B1 (printhead)", "tab:red"),
                      (b3_approx, "≈B3 (2nd round trip)", "tab:blue")]:
     ax.axvline(t_us[idx], color=c, ls="--", lw=1.2)
     ax.text(t_us[idx], ax.get_ylim()[1]*0.9, "  " + name, color=c, fontsize=10)
+# Zoom to 5-10 us: everything before 5 us is the transmit pulse ringing down.
 ax.set(xlim=(5, 10), xlabel="time (µs)", ylabel="amplitude (a.u.)",
        title="One A-scan during printing (30-layer sample, layer 15)")
 plt.tight_layout(); plt.show()
 
+# Index difference -> nanoseconds (0.4 ns per sample) -> microseconds.
 tof_us = (b2 - b1) * iu.DT_NS / 1000
 print(f"ToF(B1→B2) = {tof_us:.3f} µs")
 """),
@@ -137,15 +230,34 @@ print(f"ToF(B1→B2) = {tof_us:.3f} µs")
 
 Plot each layer's final waveform with a vertical offset. **B1 stays put; B2
 marches right** as the part grows ~100 µm per layer.
+
+---
+
+**Input** — `wf_30` again (one trace per layer: the *final* frame, i.e. the end
+of that layer's exposure) together with the tracked positions in `track30`.
+
+**What this cell does** — draws all 30 traces in one axes, each shifted upward
+by its layer number so they do not overlap, and overlays the two tracked echo
+positions as connected markers. Two small tricks make the plot readable: we zoom
+to the index range that actually contains the echoes, and we subtract each
+trace's baseline before scaling it.
+
+**Output** — one static figure. Read it as a picture of the whole print: the
+vertical red line is the unchanged printhead echo, the green diagonal is the
+part growing.
 """),
 ("code", """\
 fig, ax = plt.subplots(figsize=(11, 8))
-sl = slice(13800, 21500, 3)                      # zoom to the echo region
+# Zoom to the echo region (index 13800-21500 ≈ 5.5-8.6 µs) and keep every 3rd
+# point — plotting all 62509 points × 30 layers would be slow and unreadable.
+sl = slice(13800, 21500, 3)
 for li in range(wf_30.shape[0]):
     x = wf_30[li, -1, sl].astype(float)
-    x = x - np.median(x)                         # remove baseline offset
+    x = x - np.median(x)                         # remove the DC baseline offset
+    # Divide by a typical peak amplitude (~3.2e4) so one trace spans about one
+    # unit, then shift it up by its layer number: that is the "waterfall" trick.
     ax.plot(t_us[sl], x / 3.2e4 + li + 1, lw=0.6,
-            color=plt.cm.viridis(li / (wf_30.shape[0] - 1)))
+            color=plt.cm.viridis(li / (wf_30.shape[0] - 1)))   # color = layer
 ax.plot(t_us[track30.b1_idx], track30.layer, "r.-", ms=5, lw=1.2, label="B1 (fixed)")
 ax.plot(t_us[track30.b2_idx], track30.layer, "g.-", ms=5, lw=1.2, label="B2 (advancing)")
 ax.set(xlim=(t_us[sl][0], t_us[sl][-1]), ylim=(-0.8, wf_30.shape[0] + 2),
@@ -157,17 +269,33 @@ ax.legend(loc="upper left"); plt.tight_layout(); plt.show()
 ### Interactive 3D waterfall (rotate me!)
 
 The same data as a rotatable 3D figure (plotly). Drag to rotate, scroll to zoom.
+
+---
+
+**Input** — identical to the previous cell (`wf_30` + `track30`); only the
+rendering changes.
+
+**What this cell does** — builds one 3D line per layer with plotly, using time
+as x, layer index as y and amplitude as z, and adds the tracked B2 path as a
+green 3D curve so you can see the echo front sweeping through the stack.
+
+**Output** — an interactive plotly figure. It works in Colab and in a live
+Jupyter kernel; in a plain static export of the notebook it may appear blank,
+which is normal.
 """),
 ("code", """\
 import plotly.graph_objects as go
 
 figly = go.Figure()
-sl = slice(12000, 24000, 8)                      # zoom to the echo region
+# Coarser decimation than the 2D plot (every 8th point) — 3D rendering in the
+# browser is much heavier than a static image.
+sl = slice(12000, 24000, 8)
 for li in range(wf_30.shape[0]):
     x = wf_30[li, -1, sl]
     figly.add_trace(go.Scatter3d(
-        x=t_us[sl], y=np.full(len(x), li + 1), z=x,
+        x=t_us[sl], y=np.full(len(x), li + 1), z=x,      # time, layer, amplitude
         mode="lines", line=dict(color="black", width=1.2), showlegend=False))
+# The tracked B2 path, drawn at the amplitude the waveform actually has there.
 figly.add_trace(go.Scatter3d(
     x=t_us[track30.b2_idx], y=track30.layer,
     z=[wf_30[li, -1, b] for li, b in enumerate(track30.b2_idx)],
@@ -185,21 +313,40 @@ figly.show()
 Now the same story as a movie: one frame per layer, with the tracked B1/B2
 markers and a live ToF readout. (This is the visual proof that the acoustic
 path grows layer by layer.)
+
+---
+
+**Input** — `wf_30` (final frame of each layer) and `track30`. The animation has
+one movie frame per **printed layer**, so it runs for 30 frames.
+
+**What this cell does** — creates an empty axes once, then a small `update()`
+function redraws the waveform and moves the two markers for each layer.
+Matplotlib's `FuncAnimation` calls that function repeatedly; because we set
+`rc("animation", html="jshtml")` in the setup cell, the result is embedded as a
+video player with play/pause controls.
+
+**Output** — an interactive animation player. `plt.close(fig)` before returning
+`ani` simply prevents Jupyter from *also* showing the static first frame.
 """),
 ("code", """\
 from matplotlib.animation import FuncAnimation
 
-sl = slice(12000, 24000, 6)
+sl = slice(12000, 24000, 6)               # echo region, decimated for speed
 fig, ax = plt.subplots(figsize=(10, 4))
+# Create the artists ONCE; the animation only updates their data (much faster
+# than redrawing a whole figure per frame).
 line, = ax.plot([], [], lw=0.6, color="k")
-vb1 = ax.axvline(0, color="tab:red", ls="--", lw=1.2)
-vb2 = ax.axvline(0, color="tab:green", ls="--", lw=1.2)
+vb1 = ax.axvline(0, color="tab:red", ls="--", lw=1.2)      # B1 marker
+vb2 = ax.axvline(0, color="tab:green", ls="--", lw=1.2)    # B2 marker
 txt = ax.text(0.02, 0.92, "", transform=ax.transAxes, fontsize=12)
+# Fixed axis limits: if they moved from frame to frame the growth would be
+# impossible to see.
 ax.set(xlim=(t_us[sl][0], t_us[sl][-1]), ylim=(-4e4, 4e4),
        xlabel="time (µs)", ylabel="amplitude",
        title="30-layer print — layer-by-layer echo evolution")
 
 def update(li):
+    \"\"\"Draw layer li+1: waveform, tracked markers, and the live ToF readout.\"\"\"
     line.set_data(t_us[sl], wf_30[li, -1, sl])
     r = track30.iloc[li]
     vb1.set_xdata([t_us[int(r.b1_idx)]]); vb2.set_xdata([t_us[int(r.b2_idx)]])
@@ -207,7 +354,7 @@ def update(li):
     return line, vb1, vb2, txt
 
 ani = FuncAnimation(fig, update, frames=wf_30.shape[0], interval=280, blit=False)
-plt.close(fig)
+plt.close(fig)     # hide the static figure; show only the player below
 ani
 """),
 ("md", """\
@@ -220,25 +367,42 @@ sample returns its echo *earlier*, because curing raises the wave velocity.
 > **Thickness moves B2 right; cure moves it left.** Two causes, one echo — this
 > entanglement is exactly what the machine-learning part of the series must
 > untangle.
+
+---
+
+**Input** — the controlled pair `wf_i1` (I1, weak cure) and `wf_i7` (I7, strong
+cure): same 15-layer geometry, same resin, only the exposure intensity differs.
+
+**What this cell does** — tracks the echoes of both prints (giving `track_i1`
+and `track_i7`, reused in section 6 and in Notebook 2), then animates them in
+two side-by-side panels that advance layer-synchronously, so any difference you
+see is caused by the light dose alone.
+
+**Output** — a two-panel animation plus the two tracking tables.
 """),
 ("code", """\
+# Track the echoes of the controlled pair (same geometry, different intensity).
 track_i1 = iu.track_sample(wf_i1)
 track_i7 = iu.track_sample(wf_i7)
 
 sl = slice(13500, 20000, 6)
 fig, axes = plt.subplots(1, 2, figsize=(12, 3.6), sharey=True)
 arts = []
+# Build the same set of artists (line + two markers + text) for each panel and
+# remember them, so that update2() can refresh both panels together.
 for ax, name in zip(axes, ["I1 = 10.70 mW/cm² (weak)", "I7 = 20.16 mW/cm² (strong)"]):
     ln, = ax.plot([], [], lw=0.6, color="k")
     v1 = ax.axvline(0, color="tab:red", ls="--", lw=1.1)
     v2 = ax.axvline(0, color="tab:green", ls="--", lw=1.4)
     tx = ax.text(0.03, 0.9, "", transform=ax.transAxes, fontsize=11)
+    # Identical limits on both panels — otherwise the comparison would be unfair.
     ax.set(xlim=(t_us[sl][0], t_us[sl][-1]), ylim=(-4e4, 4e4),
            xlabel="time (µs)", title=name)
     arts.append((ln, v1, v2, tx))
 axes[0].set_ylabel("amplitude")
 
 def update2(li):
+    \"\"\"Advance BOTH prints to the same layer index li+1.\"\"\"
     out = []
     for (ln, v1, v2, tx), wf, tr in [(arts[0], wf_i1, track_i1),
                                      (arts[1], wf_i7, track_i7)]:
@@ -258,27 +422,45 @@ ani2
 
 Use the sliders to pick a sample, a layer, and a frame. (On Colab the widgets
 are live; in a static render you see one snapshot.)
+
+---
+
+**Input** — all three prints and their tracking tables, collected into the
+`SAMPLES` dictionary. Note that here you can also choose the **frame** (1–6),
+i.e. the moment *within* one layer's exposure — the second time scale that
+Notebook 2 is built on.
+
+**What this cell does** — defines a plotting function `browse()` whose arguments
+become widget controls, and hands it to `ipywidgets.interact`, which builds a
+dropdown plus two sliders automatically and re-runs the function on every change.
+
+**Output** — an interactive browser. Try the same layer of I1 and I7 and watch
+the green B2 line move.
 """),
 ("code", """\
 import ipywidgets as w
 
+# One entry per print: (waveform array, tracking table).
 SAMPLES = {"15 layers, I1": (wf_i1, track_i1),
            "15 layers, I7": (wf_i7, track_i7),
            "30 layers, I7": (wf_30, track30)}
 
 def browse(sample="30 layers, I7", layer=1, frame=6):
+    \"\"\"Plot one A-scan chosen by the widgets (layer and frame are 1-based).\"\"\"
     wf, tr = SAMPLES[sample]
-    layer = min(layer, wf.shape[0])
-    x = wf[layer - 1, frame - 1]
+    layer = min(layer, wf.shape[0])     # the 15-layer prints have no layer 16-30
+    x = wf[layer - 1, frame - 1]        # widgets count from 1, Python from 0
     r = tr.iloc[layer - 1]
     fig, ax = plt.subplots(figsize=(10, 3.4))
-    ax.plot(t_us[::4], x[::4], lw=0.5, color="k")
+    ax.plot(t_us[::4], x[::4], lw=0.5, color="k")   # every 4th point: fast redraw
     ax.axvline(t_us[int(r.b1_idx)], color="tab:red", ls="--", label="B1")
     ax.axvline(t_us[int(r.b2_idx)], color="tab:green", ls="--", label="B2")
     ax.set(xlim=(5, 10), xlabel="time (µs)", ylabel="amplitude",
            title=f"{sample} — layer {layer}, frame {frame}  |  ToF = {r.tof_us:.3f} µs")
     ax.legend(loc="upper right"); plt.tight_layout(); plt.show()
 
+# interact() inspects browse()'s arguments and builds the matching controls:
+# a dropdown for `sample`, sliders for `layer` and `frame`.
 w.interact(browse, sample=list(SAMPLES), layer=(1, 30, 1), frame=(1, 6, 1));
 """),
 ("md", """\
@@ -287,9 +469,23 @@ w.interact(browse, sample=list(SAMPLES), layer=(1, 30, 1), frame=(1, 6, 1));
 The simplest possible "monitor": track ToF layer by layer. It is nearly linear
 (path grows ~100 µm/layer), and the *slope difference* between I1 and I7 already
 carries material information (velocity).
+
+---
+
+**Input** — only the three tracking tables (`track_i1`, `track_i7`, `track30`);
+the raw waveforms are no longer needed. We have compressed 62,509 points per
+frame down to **one number per layer**.
+
+**What this cell does** — plots `tof_us` against layer index for the three
+prints on common axes.
+
+**Output** — the first real "process monitoring" curve of the series: a physical
+quantity measured *during* printing, without touching the part.
 """),
 ("code", """\
 fig, ax = plt.subplots(figsize=(7, 4.2))
+# Each tracking table already contains tof_us per layer — one number per layer
+# distilled from 6 x 62509 raw points.
 for tr, name, c in [(track_i1, "15L @ I1 (weak cure)", "tab:blue"),
                     (track_i7, "15L @ I7 (strong cure)", "tab:orange"),
                     (track30, "30L @ I7", "tab:green")]:
@@ -341,11 +537,32 @@ Case 1 fails). Instead, the paper *designs* features on a physical map:
 This notebook rebuilds the key features from raw data and shows they carry
 process signatures *before any learning*.
 """),
+("md", SETUP_MD),
 ("code", BOOT),
+("md", """\
+### Loading the controlled pair again
+
+**Input** — the same two `.npz` archives as in Notebook 1: `15L @ I1` (weak
+cure) and `15L @ I7` (strong cure). Same geometry, same resin, only the light
+intensity differs, so every difference we measure below is a **material**
+difference.
+
+**What this cell does** — reloads the waveforms, rebuilds the time axis, and
+re-runs the B1/B2 tracker. Each notebook stands on its own, so nothing carries
+over from Notebook 1's kernel.
+
+**Output** — `wf_i1`, `wf_i7` (arrays of shape 15 × 6 × 62509), `t_us`, and the
+tracking tables `track_i1`, `track_i7` (`b1_idx`, `b2_idx`, `tof_us` per layer)
+that every feature below is computed *relative to*.
+"""),
 ("code", """\
-wf_i1, _ = iu.load_sample("data/waveforms_15L_I1.npz")
-wf_i7, _ = iu.load_sample("data/waveforms_15L_I7.npz")
+# Same controlled pair as Notebook 1: identical geometry, different light dose.
+wf_i1, _ = iu.load_sample("data/waveforms_15L_I1.npz")   # weak cure
+wf_i7, _ = iu.load_sample("data/waveforms_15L_I7.npz")   # strong cure
 t_us = iu.time_axis_us()
+
+# Echo positions are the anchor for every feature: all windows below are placed
+# relative to the tracked B2 index, never at a fixed absolute time.
 track_i1 = iu.track_sample(wf_i1)
 track_i7 = iu.track_sample(wf_i7)
 """),
@@ -355,30 +572,48 @@ track_i7 = iu.track_sample(wf_i7)
 Fix one layer. Play its six frames (reference + five during exposure), zoomed
 to the B2 echo. The path cannot change — everything you see moving is
 **chemistry**.
+
+---
+
+**Input** — one single layer (layer 8) of each print, i.e. `wf_i1[7]` and
+`wf_i7[7]`: **6 frames × 62,509 points** each. This time the animation's frames
+are the *within-layer* snapshots, not layers.
+
+**What this cell does** — cuts a ±500-sample window (±0.2 µs) centred on that
+layer's tracked B2 position and animates the six frames inside it. Because the
+printhead does not move during an exposure, the window content can only change
+through curing.
+
+**Output** — a two-panel animation. The weakly cured sample (left) keeps moving
+across frames — cure is still progressing; the strongly cured one settles
+sooner.
 """),
 ("code", """\
 from matplotlib.animation import FuncAnimation
 
-LAYER = 8
+LAYER = 8                                    # any mid-print layer works
 r1, r7 = track_i1.iloc[LAYER-1], track_i7.iloc[LAYER-1]
-w1 = 500
+w1 = 500                                     # half-window: 500 samples = 0.2 µs
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 3.6), sharey=False)
 arts = []
 for ax, (wfS, r, name) in zip(axes, [(wf_i1, r1, "I1 (weak cure)"),
                                      (wf_i7, r7, "I7 (strong cure)")]):
-    b2 = int(r.b2_idx)
+    b2 = int(r.b2_idx)                       # window follows the echo, not the clock
     seg_t = t_us[b2-w1:b2+w1]
     ln, = ax.plot([], [], lw=1.2)
     tx = ax.text(0.03, 0.9, "", transform=ax.transAxes)
     ax.set(xlim=(seg_t[0], seg_t[-1]), xlabel="time (µs)",
            title=f"{name} — layer {LAYER}, B2 window")
+    # Per-panel y-limits: the two intensities have different echo amplitudes and
+    # we want to see the SHAPE change, not the overall level.
     ax.set_ylim(wfS[LAYER-1, :, b2-w1:b2+w1].min()*1.1,
                 wfS[LAYER-1, :, b2-w1:b2+w1].max()*1.1)
     arts.append((ln, tx, wfS, b2))
 axes[0].set_ylabel("amplitude")
 
 def upd(f):
+    \"\"\"Show frame f of the same layer in both panels (f=0 is the reference).\"\"\"
     out = []
     for ln, tx, wfS, b2 in arts:
         ln.set_data(t_us[b2-w1:b2+w1], wfS[LAYER-1, f, b2-w1:b2+w1])
@@ -399,22 +634,66 @@ The change is subtle by eye — which is precisely why we quantify it with
 `ium_utils.layer_features` computes the teaching subset of the paper's 11
 descriptors: ToF, amplitude ratio, RMS energy, center frequency, bandwidth,
 within-layer RMS and STD.
+
+---
+
+**Input** — the raw frames of one layer (`wf[li]`, shape 6 × 62509) plus that
+layer's tracked `b1_idx` and `b2_idx`. Nothing else: every window is positioned
+relative to the echoes.
+
+**What this cell does** — loops over the layers of a print and calls
+`iu.layer_features()`, which implements the two scales explicitly:
+
+- *across-layer* features use the **final frame** (end of exposure): ToF from
+  the B1→B2 index difference, `amplitude` as the B2/B1 envelope ratio,
+  `RMS_Energy`, and the spectral pair `Center_Freq` / `Bandwidth` from an FFT of
+  a ±800-sample window around B2;
+- *within-layer* features use **all six frames** of the same window:
+  `frame_diff_rms` (root-mean-square of frame-to-frame differences) and
+  `within_layer_std`.
+
+**Output** — `F1` and `F7`: one row per layer, one column per feature, indexed
+by layer number. The `.head().round(4)` call prints the first five rows so you
+can see the actual numbers and units.
 """),
 ("code", """\
 def features_for(wf, track):
+    \"\"\"Compute the layer-wise feature table for one print.
+
+    wf    : (n_layers, 6 frames, 62509 points) raw waveforms
+    track : tracking table with b1_idx / b2_idx per layer
+    returns: DataFrame, one row per layer, one column per feature
+    \"\"\"
     rows = []
     for li in range(wf.shape[0]):
         r = track.iloc[li]
+        # Pass ALL frames of this layer: layer_features() uses the last frame
+        # for the across-layer features and all six for the within-layer ones.
         f = iu.layer_features(wf[li], int(r.b1_idx), int(r.b2_idx))
         f["layer"] = li + 1
         rows.append(f)
     return pd.DataFrame(rows).set_index("layer")
 
-F1 = features_for(wf_i1, track_i1)
-F7 = features_for(wf_i7, track_i7)
+F1 = features_for(wf_i1, track_i1)      # weak cure
+F7 = features_for(wf_i7, track_i7)      # strong cure
 F1.head().round(4)
 """),
+("md", """\
+### Do the features separate the two intensities?
+
+**Input** — the two freshly computed tables `F1` and `F7` (15 rows each).
+
+**What this cell does** — plots four representative features against layer
+index, one panel each, with both intensities overlaid. Each panel is titled with
+the *physical* quantity the feature is meant to probe, so you can judge the
+design rather than just the curve.
+
+**Output** — a 2×2 figure. If the two colors separate here, the features already
+carry process information **before any machine learning** — which is the whole
+point of physics-informed design.
+"""),
 ("code", """\
+# Four features, one per physical mechanism (see the panel titles).
 names = ["ToF", "amplitude", "Center_Freq", "frame_diff_rms"]
 titles = ["ToF (µs) — path + velocity", "B2/B1 amplitude ratio — attenuation",
           "center frequency (Hz) — dispersion", "within-layer RMS — curing dynamics"]
@@ -440,11 +719,35 @@ plt.tight_layout(); plt.show()
 The repository ships the paper's full 50-sample feature table
 (`feature11.csv`, 11 features × 30 layer slots). Compare our recomputed ToF
 with the stored one for the same condition (15 layers, I1 = 10%).
+
+---
+
+**Input** — two things that came from completely different routes: (a)
+`data/feature11.csv`, produced by the **paper's own pipeline** from the full raw
+dataset — 50 rows, one per printed sample, with columns named
+`Layer_{i}_{feature}` for i = 1…30 (unused slots are zero-padded); and (b) the
+`F1` table we just rebuilt in this notebook from the raw `.npz`.
+
+**What this cell does** — selects the single row of the stored table that
+matches our sample (`layer == 15` **and** `intensity == 10`; the design has
+exactly one print per combination, so this row is unique — `intensity` is stored
+as *percent of maximum lamp power*, and 10% = I1 = 10.70 mW/cm²), pulls out its
+15 stored ToF values, and overlays them on ours.
+
+**Output** — a comparison plot and a correlation number (≈0.99). It will not be
+exactly 1: the teaching tracker is a simplified re-implementation. Agreement at
+this level tells us the rest of the series rests on the same physics as the
+published pipeline.
 """),
 ("code", """\
+# The paper's own feature table: 50 rows (one per printed sample), wide format
+# with columns Layer_1_ToF ... Layer_30_within_layer_std.
 df = iu.load_features("data/feature11.csv")
+
+# Pick the row matching OUR sample: 15 layers at 10% lamp power (= I1).
+# The design grid has exactly one print per (layers, intensity) combination.
 row = df[(df.layer == 15) & (df.intensity == 10)].iloc[0]
-stored_tof = [row[f"Layer_{i}_ToF"] for i in range(1, 16)]
+stored_tof = [row[f"Layer_{i}_ToF"] for i in range(1, 16)]   # slots 16-30 are padding
 
 fig, ax = plt.subplots(figsize=(7, 4))
 ax.plot(range(1, 16), stored_tof, "k.-", label="stored (paper pipeline)")
@@ -459,10 +762,28 @@ print(f"correlation: {corr:.4f}")
 
 Now use the full 50-sample table: layer × intensity heatmaps for one layer-count
 group (the paper's Fig. 9/11 style). The structure is visible to the naked eye.
+
+---
+
+**Input** — the complete `feature11.csv` table (`df`), not just our three
+prints. We use the **30-layer group**: 10 prints, one per intensity I1…I10, each
+with 30 filled layer slots.
+
+**What this cell does** — for a chosen feature, gathers the 10 rows into a
+matrix of shape (30 layers × 10 intensities) and draws it as an image: vertical
+axis = depth into the print, horizontal axis = light dose.
+
+**Output** — three heatmaps. Read them as the whole experimental design in one
+picture: ToF increases downward (the part grows), the amplitude ratio falls to
+the right (more dose → more attenuation), and the within-layer RMS lights up on
+the weak-cure side.
 """),
 ("code", """\
 def heat(ax, base, group_layers, title, cmap="viridis"):
-    g = df[df.layer == group_layers].sort_values("intensity")
+    \"\"\"Draw a (layer × intensity) heatmap of one feature for one layer group.\"\"\"
+    g = df[df.layer == group_layers].sort_values("intensity")   # 10 prints, I1..I10
+    # Build the matrix column by column (one column per print), then transpose
+    # so that rows = layers (depth) and columns = intensity (dose).
     M = np.array([[r[f"Layer_{i}_{base}"] for i in range(1, group_layers + 1)]
                   for _, r in g.iterrows()]).T          # layers × intensities
     im = ax.imshow(M, aspect="auto", origin="upper", cmap=cmap)
@@ -514,6 +835,22 @@ This is the methodological heart of the series. You will:
 3. run the honest protocol — **Leave-One-Intensity-Out (LOIO)**;
 4. train the paper's deployed **three-branch attention-fusion network**.
 """),
+("md", """\
+## Machine-learning vocabulary used in this notebook
+
+| term | what it means here |
+|---|---|
+| **sample** | one printed cylinder. We have exactly **50** of them — a small dataset, which is why every methodological detail matters. |
+| **feature / representation** | the numbers describing one sample. Ours is 344-dimensional: 330 layer-wise values + 12 part-scale statistics + 2 printing conditions. |
+| **label / target** | the ground truth we want to predict: thickness (Keyence profilometer, mm), storage modulus (rheometer, Pa), degree of conversion (Raman, 0–1). |
+| **cross-validation (CV), fold** | to estimate performance honestly you split the data, train on one part and test on the other, and repeat. Each repetition is a *fold*. |
+| **data leakage** | when information about the test samples reaches the model during training. The reported score then measures memorisation, not generalisation. This notebook shows a real example. |
+| **LOIO** | *Leave-One-Intensity-Out*: each fold holds out **all** samples printed at one exposure intensity, so the model must predict a light dose it has never seen. |
+| **StandardScaler** | rescales each column to zero mean / unit variance. Critically, it must be **fitted on the training fold only** — fitting it on all data is itself a form of leakage. |
+| **epoch** | one pass of the training algorithm over the whole training set. |
+| **R²** | fraction of the label's variance the model explains: 1.0 is perfect, 0 is no better than predicting the mean, and negative values are worse than that. |
+"""),
+("md", SETUP_MD),
 ("code", BOOT),
 ("md", """\
 ## 1. Assemble the dataset
@@ -521,14 +858,39 @@ This is the methodological heart of the series. You will:
 Each printed sample becomes: 330 layer-wise entries (11 features × 30 layer
 slots, zero-padded) + 12 part-scale statistics + 2 printing conditions,
 with three labels (thickness, modulus, DoC) from Keyence / rheometer / Raman.
+
+---
+
+**Input** — two CSV files that together *are* the paper's dataset:
+
+- `data/feature11.csv` — the feature table produced by the paper's extraction
+  pipeline from all 50 prints (the same file we sanity-checked against our own
+  recomputation in Notebook 2);
+- `data/condition_labels.csv` — the measured ground truth for the same 50
+  prints, in the same row order: `thickness` (mm, Keyence laser profilometer),
+  `modulus` (Pa, rheometer) and `DoC` (dimensionless 0–1, Raman spectroscopy).
+
+**What this cell does** — loads both tables, asserts that their rows really do
+line up (the `assert` is a cheap guard against the single most common and most
+embarrassing data bug: silently mismatched features and labels), and merges the
+three label columns into one wide table called `full`.
+
+**Output** — `full`: 50 rows × (330 layer-wise features + `layer` + `intensity`
++ 3 labels). Every remaining cell in this notebook reads from it.
 """),
 ("code", """\
+# Features (from raw ultrasound) and labels (from destructive/offline metrology)
+# live in two files with matching row order — one row per printed sample.
 feats = iu.load_features("data/feature11.csv")
 labels = iu.load_labels("data/condition_labels.csv")
+
+# Guard against the classic silent bug: features and labels out of order.
 assert (feats.layer.values == labels.layer.values).all()
+
 full = feats.copy()
-for c in iu.LABEL_COLS:
+for c in iu.LABEL_COLS:                 # thickness, modulus, DoC
     full[c] = labels[c]
+
 print(f"{len(full)} samples;  layer counts {sorted(full.layer.unique())};  "
       f"intensities {sorted(full.intensity.unique())} (% of max power)")
 full[["layer", "intensity"] + iu.LABEL_COLS].head()
@@ -539,21 +901,40 @@ full[["layer", "intensity"] + iu.LABEL_COLS].head()
 PCA of the 330 layer-wise features. **Color = intensity, size = layer count.**
 Samples cluster by their process condition — remember this picture: it is the
 geometric reason why a random train/test split leaks.
+
+---
+
+**Input** — the 330 layer-wise columns of `full` (`iu.seq_columns()` returns
+them sorted by layer then feature name). Labels are *not* used: this is
+unsupervised.
+
+**What this cell does** — standardises the columns, then compresses 330
+dimensions to 2 with PCA (Principal Component Analysis: it finds the directions
+along which the samples differ most) so we can look at the dataset's geometry.
+
+**Output** — an interactive scatter plot; hover a point to see that print's
+layer count and three labels. The clustering you see by color is the visual
+explanation of the leakage demonstrated in the next section.
+
+> Note: this PCA is fitted on all 50 samples on purpose — it is a *picture* of
+> the data, not a model being evaluated. In section 3 we start being strict.
 """),
 ("code", """\
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import plotly.express as px
 
-seq_cols = iu.seq_columns(full)
+seq_cols = iu.seq_columns(full)                      # the 330 layer-wise columns
+# Standardise first: ToF (µs), frequencies (Hz) and ratios have wildly different
+# magnitudes, and PCA would otherwise simply follow the largest units.
 Z = StandardScaler().fit_transform(full[seq_cols].values)
 P = PCA(n_components=2).fit(Z)
-XY = P.transform(Z)
+XY = P.transform(Z)                                  # 50 samples × 2 components
 
 pdf = pd.DataFrame(dict(PC1=XY[:, 0], PC2=XY[:, 1],
-                        intensity=full.intensity.astype(str),
-                        layers=full.layer,
-                        thickness=full.thickness.round(2),
+                        intensity=full.intensity.astype(str),   # color
+                        layers=full.layer,                      # marker size
+                        thickness=full.thickness.round(2),      # hover info
                         modulus=full.modulus.round(0),
                         DoC=full.DoC.round(3)))
 fig = px.scatter(pdf, x="PC1", y="PC2", color="intensity", size="layers",
@@ -571,18 +952,42 @@ The paper's first submission used random K-fold CV. A reviewer objected:
 a model can interpolate from the nominal settings — the ultrasonic features are
 never actually tested.* The authors rebuilt the whole evaluation. Let's
 reproduce both worlds with a fast Random Forest:
+
+---
+
+**Input** — the full 344-dimensional representation built from `full`: the 330
+layer-wise features, the 2 process columns (`layer`, `intensity`) and the 12
+part-scale statistics computed by `iu.part_scale_stats()` (mean, max, std,
+slope, early-vs-late difference and final value of the ToF and amplitude
+sequences, using only each print's *real* layers, not the zero padding).
+
+**What this cell does** — trains the *same* Random Forest under two evaluation
+protocols and nothing else changes: (a) random 5-fold, which scatters the 50
+samples arbitrarily, and (b) Leave-One-Intensity-Out, where `groups=intensity`
+forces every fold to hold out all five prints made at one light dose. A Random
+Forest is used here instead of the neural network purely because it trains in
+seconds, so the comparison is about the *protocol*, not the model.
+
+**Output** — the bar chart and the `comp` table of R² per target under both
+protocols. The distance between the two bars is the leakage.
 """),
 ("code", """\
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import KFold, LeaveOneGroupOut
 from sklearn.metrics import r2_score
 
+# Build the sample representation: 330 layer-wise + 2 process + 12 part-scale.
 X = full[seq_cols + ["layer", "intensity"]].values
-X_stats = iu.part_scale_stats(full).values
+X_stats = iu.part_scale_stats(full).values        # 12 global descriptors
 X_all = np.hstack([X, X_stats])
-Y = full[iu.LABEL_COLS].values
+Y = full[iu.LABEL_COLS].values                    # 50 × 3 labels
 
 def cv_r2(splitter, groups=None):
+    \"\"\"Run any CV splitter and return out-of-fold R² for the three targets.
+
+    Every sample is predicted exactly once, by a model that did not see it
+    during training — that is what makes the score 'out-of-fold'.
+    \"\"\"
     preds = np.zeros_like(Y)
     for tr_idx, te_idx in splitter.split(X_all, Y, groups):
         rf = RandomForestRegressor(300, random_state=0, n_jobs=-1)
@@ -590,7 +995,9 @@ def cv_r2(splitter, groups=None):
         preds[te_idx] = rf.predict(X_all[te_idx])
     return [r2_score(Y[:, i], preds[:, i]) for i in range(3)]
 
+# (a) Optimistic: random folds — a held-out print's own intensity is still in training.
 r2_random = cv_r2(KFold(5, shuffle=True, random_state=0))
+# (b) Honest: whole intensity groups held out — the model must extrapolate.
 r2_loio = cv_r2(LeaveOneGroupOut(), groups=full.intensity.values)
 
 comp = pd.DataFrame({"random 5-fold": r2_random, "LOIO (honest)": r2_loio},
@@ -617,6 +1024,28 @@ Branches: part-scale stats → MLP(32) · layer-wise sequences → CNN+Bi-LSTM(1
 · printing conditions → MLP(16). A sigmoid attention gate weighs the 176-d
 fusion vector (readable — Notebook 4), and a shared head predicts all three
 targets jointly.
+
+---
+
+**Input** — the same `full` table, but now repacked per fold by
+`iu.assemble_arrays()`, which delivers the three branch inputs in the shapes the
+network expects: `stats` (n × 12), `seq` (n × 30 layers × 11 features) and
+`proc` (n × 2), with the labels standardised as well. **All four scalers are
+fitted on the training fold only** — rule ② above, implemented in one place so
+you can read it in `src/ium_utils.py`.
+
+**What this cell does** — loops over the 10 LOIO folds; in each one it packs the
+arrays, trains a fresh network from scratch, predicts the held-out intensity,
+converts the predictions back to physical units (`sc_y.inverse_transform`,
+inside `iu.predict`) and stores them. Afterwards it aggregates all 50
+out-of-fold predictions into one honest score table.
+
+**Output** — per-fold R² printed live, and `agg`: the aggregate RMSE and R² per
+target. On a Colab GPU this takes ~4 minutes; on CPU roughly 20–30.
+
+> Classroom budget: 60 epochs, single seed. The paper uses 100 epochs × 5 seeds,
+> so expect numbers that are close but slightly lower — and a little different
+> on every machine.
 """),
 ("code", """\
 import torch
@@ -624,12 +1053,17 @@ print("device:", "cuda" if torch.cuda.is_available() else "cpu",
       " (Colab: Runtime → Change runtime type → GPU makes this ~5× faster)")
 
 EPOCHS = 60      # classroom budget; the paper uses 100 epochs × 5 seeds
-iu.set_seed(42)
+iu.set_seed(42)  # make this run reproducible (python, numpy and torch RNGs)
 
 results, all_pred, all_true = [], [], []
+# One fold per exposure intensity: 45 prints train, the 5 prints of the held-out
+# intensity are tested. The model has never seen that light dose.
 for tr_df, te_df, inten in iu.loio_folds(full):
+    # Pack the three branch inputs; scalers are fitted on tr_df ONLY (leak-free).
     a_tr, a_te, sc_y = iu.assemble_arrays(tr_df, te_df)
+    # A fresh network per fold — reusing one would leak across folds.
     net = iu.train_model(a_tr, epochs=EPOCHS)
+    # predict() also undoes the label scaling, so yp is in physical units.
     yp = iu.predict(net, a_te, sc_y)
     all_pred.append(yp); all_true.append(te_df[iu.LABEL_COLS].values)
     fold_r2 = iu.metrics(te_df[iu.LABEL_COLS].values, yp)["R2"]
@@ -637,6 +1071,8 @@ for tr_df, te_df, inten in iu.loio_folds(full):
     print(f"held-out intensity {inten:3d}%:  "
           + "  ".join(f"{l} R²={fold_r2[l]:+.2f}" for l in iu.LABEL_COLS))
 
+# Stack the 10 folds: every one of the 50 samples now has exactly one prediction
+# made by a model that never saw its intensity.
 YP, YT = np.vstack(all_pred), np.vstack(all_true)
 print("\\n=== LOIO aggregate (all 50 out-of-fold predictions) ===")
 agg = iu.metrics(YT, YP).round(3)
@@ -651,14 +1087,29 @@ Notes on what you should see (numbers vary a little with hardware/seed):
   model must extrapolate beyond the calibrated intensity range. The paper's
   full protocol (100 epochs, 5 seeds, mild noise augmentation) reports
   0.985 / 0.832 / 0.757.
+
+---
+
+**Input** — `YT` and `YP`: the 50 measured and 50 predicted label triplets
+collected in the training loop, plus `full.intensity` for the coloring.
+
+**What this cell does** — draws a parity plot per target: measured on x,
+predicted on y, with the diagonal marking perfect prediction. The color encodes
+which fold each point came from, which is the fastest way to spot the edge-fold
+behaviour described above.
+
+**Output** — three scatter plots. Points far from the diagonal, grouped by
+color, mean a whole intensity was predicted badly — much more informative than
+a single aggregate R².
 """),
 ("code", """\
 fig, axes = plt.subplots(1, 3, figsize=(13, 4))
 for i, (ax, l, unit) in enumerate(zip(axes, iu.LABEL_COLS, ["mm", "Pa", ""])):
+    # Color = exposure intensity = which LOIO fold this point was held out in.
     ax.scatter(YT[:, i], YP[:, i], s=28, alpha=0.7,
                c=full.intensity.values, cmap="viridis")
     lo, hi = YT[:, i].min(), YT[:, i].max()
-    ax.plot([lo, hi], [lo, hi], "k--", lw=1)
+    ax.plot([lo, hi], [lo, hi], "k--", lw=1)      # perfect-prediction diagonal
     ax.set(xlabel=f"measured {l} ({unit})", ylabel=f"predicted {l}",
            title=f"{l}:  R² = {agg.loc[l, 'R2']:.3f}")
 plt.suptitle("LOIO out-of-fold predictions (color = exposure intensity)")
@@ -699,14 +1150,30 @@ A sensor you cannot interpret is a sensor you cannot trust. In this notebook:
 4. play with a **virtual sensor dashboard** — and see why this model is the
    feedback signal for closed-loop printing.
 """),
+("md", SETUP_MD),
 ("code", BOOT),
+("md", """\
+### Rebuilding the dataset table
+
+**Input** — the same two files as Notebook 3: `data/feature11.csv` (the paper's
+feature table for all 50 prints) and `data/condition_labels.csv` (the measured
+thickness / modulus / DoC). No raw waveforms are needed any more — everything in
+this notebook operates on the 344-dimensional representation.
+
+**What this cell does** — reloads and merges the tables exactly as in Notebook 3
+(each notebook is self-contained), and stores the list of the 330 layer-wise
+column names in `seq_cols` for later reuse.
+
+**Output** — `full` (50 × 344 + labels) and `seq_cols`.
+"""),
 ("code", """\
+# Same dataset table as Notebook 3 — each notebook runs standalone.
 feats = iu.load_features("data/feature11.csv")
 labels = iu.load_labels("data/condition_labels.csv")
 full = feats.copy()
 for c in iu.LABEL_COLS:
     full[c] = labels[c]
-seq_cols = iu.seq_columns(full)
+seq_cols = iu.seq_columns(full)        # the 330 Layer_{i}_{feature} columns
 """),
 ("md", """\
 ## 1. What do the attention gates say?
@@ -714,6 +1181,23 @@ seq_cols = iu.seq_columns(full)
 Train on one LOIO fold and read the sigmoid gates of the fusion layer.
 Gate positions 0–31 = part-scale stats branch, 32–159 = layer-wise branch,
 160–175 = printing-condition branch.
+
+---
+
+**Input** — `full`, split by `iu.loio_folds()`; we take fold index 4, i.e. a
+**mid-range** exposure intensity is held out (edge folds are harder — exercise 1
+asks you to try one).
+
+**What this cell does** — trains one network for that fold, then calls
+`iu.predict(..., return_attn=True)` to retrieve not just the predictions but the
+**gate vector** the attention layer applied to each test sample. The three
+branch outputs are concatenated in a fixed order before gating — stats (32
+dimensions) + layer-wise sequence (128) + process conditions (16) = 176 — which
+is where the segment boundaries 0–32–160–176 come from.
+
+**Output** — a heatmap of all 176 gate values for each held-out print, plus a
+bar chart of the per-branch means: a direct, quantitative answer to *"does the
+ultrasound contribute more than the nominal recipe?"*
 """),
 ("code", """\
 iu.set_seed(42)
@@ -721,20 +1205,24 @@ folds = list(iu.loio_folds(full))
 tr_df, te_df, inten = folds[4]              # hold out a mid-range intensity
 a_tr, a_te, sc_y = iu.assemble_arrays(tr_df, te_df)
 net = iu.train_model(a_tr, epochs=60)
+# return_attn=True also gives the per-sample sigmoid gate vector (0...1 each).
 yp, gates = iu.predict(net, a_te, sc_y, return_attn=True)
 print("gates shape (test samples × fusion dims):", gates.shape)
 
+# The fusion vector is the concatenation of the three branch outputs, in this
+# fixed order — hence these index ranges.
 seg = dict(stats=(0, 32), layerwise=(32, 160), process=(160, 176))
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 3.8),
                              gridspec_kw={"width_ratios": [2.4, 1]})
 im = a1.imshow(gates, aspect="auto", cmap="viridis", vmin=0, vmax=1)
 for name, (lo, hi) in seg.items():
-    a1.axvline(hi - 0.5, color="w", lw=1)
+    a1.axvline(hi - 0.5, color="w", lw=1)          # branch boundary
     a1.text((lo + hi) / 2, -0.8, name, ha="center", fontsize=10)
 a1.set(xlabel="fusion-vector channel", ylabel="test sample",
        title=f"Sigmoid gate activations (held-out intensity {inten}%)")
 plt.colorbar(im, ax=a1, shrink=0.8)
 
+# Average gate per branch, normalised to 100% for a readable relative ranking.
 means = {n: float(gates[:, lo:hi].mean()) for n, (lo, hi) in seg.items()}
 tot = sum(means.values())
 a2.bar(means.keys(), [v / tot * 100 for v in means.values()],
@@ -756,6 +1244,26 @@ the quantitative answer to *"does sensing add information beyond the recipe?"*
 
 A gradient-boosting surrogate gives fast per-target rankings (the paper's
 Fig. 17 uses XGBoost; sklearn's HistGradientBoosting behaves similarly).
+
+---
+
+**Input** — a *collapsed* version of the feature table: instead of 330 columns,
+one average per physical descriptor (11 values) plus `layer_count` and
+`intensity`. Averaging makes the ranking readable; the crucial detail is that
+each print is averaged over its **own** number of layers only, because the
+unused layer slots are zero padding and would drag the averages toward zero.
+
+**What this cell does** — fits a gradient-boosting model per target and computes
+**permutation importance**: shuffle one column, see how much the prediction
+degrades. A feature the model truly relies on hurts a lot when scrambled.
+
+**Output** — three horizontal bar charts (top 8 features per target). Compare
+them with the two-scale design in Notebook 2 — the ranking should reproduce the
+physics we built in.
+
+> This section is about *interpretation*, so it fits on all 50 samples on
+> purpose; it is not a performance claim. Performance numbers only ever come
+> from the LOIO protocol.
 """),
 ("code", """\
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -767,11 +1275,14 @@ BASES = ["ToF", "amplitude", "RMS_Energy", "Center_Freq", "Bandwidth",
          "Wavelet_Energy_L3", "frame_diff_rms", "within_layer_std"]
 
 def collapsed(df):
+    \"\"\"330 layer-wise columns -> 11 per-feature averages (+ the 2 conditions).\"\"\"
     out = pd.DataFrame(index=df.index)
-    n_real = df.layer.values.astype(int)
+    n_real = df.layer.values.astype(int)      # this print's REAL number of layers
     for b in BASES:
         cols = [f"Layer_{i}_{b}" for i in range(1, 31)]
         V = df[cols].values
+        # Average over real layers only — slots beyond n are zero padding and
+        # would otherwise bias short prints toward zero.
         out[b] = [row[:n].mean() for row, n in zip(V, n_real)]
     out["layer_count"] = df.layer.values
     out["intensity"] = df.intensity.values
@@ -781,9 +1292,10 @@ Xc = collapsed(full)
 fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
 for ax, target in zip(axes, iu.LABEL_COLS):
     m = HistGradientBoostingRegressor(random_state=0).fit(Xc, full[target])
+    # Permutation importance: shuffle one column, measure the loss of skill.
     imp = permutation_importance(m, Xc, full[target], n_repeats=10,
                                  random_state=0)
-    order = np.argsort(imp.importances_mean)[-8:]
+    order = np.argsort(imp.importances_mean)[-8:]        # top 8, ascending
     ax.barh(np.array(Xc.columns)[order], imp.importances_mean[order],
             color="tab:blue")
     ax.set_title(target)
@@ -800,6 +1312,21 @@ plt.tight_layout(); plt.show()
 The model recovered the division of labor the features were designed for.
 
 ## 3. How fragile is it? Noise robustness
+
+---
+
+**Input** — the full 344-dimensional `X_all` and the labels `Y`, plus a
+per-column magnitude scale so that "5% noise" means the same thing for a ToF in
+microseconds and a frequency in hertz.
+
+**What this cell does** — repeats the LOIO evaluation while adding Gaussian
+noise to the **test** features only, at several levels, five repetitions each.
+Training stays clean on purpose: we are asking "how does a model trained on good
+data survive a degraded sensor in the field?", not "does noise help training?".
+
+**Output** — R² versus noise level with error bars. A gentle slope means the
+model leans on broad physical trends; a cliff would mean it depends on fragile
+details.
 """),
 ("code", """\
 from sklearn.ensemble import RandomForestRegressor
@@ -809,22 +1336,25 @@ from sklearn.metrics import r2_score
 X_all = np.hstack([full[seq_cols + ["layer", "intensity"]].values,
                    iu.part_scale_stats(full).values])
 Y = full[iu.LABEL_COLS].values
+# Per-column magnitude, so a "5% noise" level is comparable across features
+# whose units differ by many orders of magnitude (µs vs Hz vs ratios).
 scale = np.abs(X_all).mean(axis=0)
 
 def loio_r2_with_noise(noise_pct, n_rep=5, seed0=0):
+    \"\"\"LOIO R² when the TEST features are corrupted by noise_pct % noise.\"\"\"
     r2s = []
-    for rep in range(n_rep):
+    for rep in range(n_rep):                      # repeat: noise is random
         rng = np.random.default_rng(seed0 + rep)
         preds = np.zeros_like(Y)
         for tr_idx, te_idx in LeaveOneGroupOut().split(
                 X_all, Y, full.intensity.values):
             rf = RandomForestRegressor(200, random_state=0, n_jobs=-1)
-            rf.fit(X_all[tr_idx], Y[tr_idx])
+            rf.fit(X_all[tr_idx], Y[tr_idx])      # training data stays clean
             Xte = X_all[te_idx] + rng.normal(
                 0, noise_pct / 100 * scale, X_all[te_idx].shape)
             preds[te_idx] = rf.predict(Xte)
         r2s.append([r2_score(Y[:, i], preds[:, i]) for i in range(3)])
-    return np.array(r2s)
+    return np.array(r2s)                          # (n_rep, 3)
 
 levels = [0, 1, 2, 5, 10, 20]
 curves = {l: loio_r2_with_noise(l) for l in levels}
@@ -832,7 +1362,7 @@ curves = {l: loio_r2_with_noise(l) for l in levels}
 fig, ax = plt.subplots(figsize=(7.5, 4.2))
 for i, l in enumerate(iu.LABEL_COLS):
     mean = [curves[nv][:, i].mean() for nv in levels]
-    sd = [curves[nv][:, i].std() for nv in levels]
+    sd = [curves[nv][:, i].std() for nv in levels]     # spread over repetitions
     ax.errorbar(levels, mean, yerr=sd, marker="o", capsize=3, label=l)
 ax.set(xlabel="per-feature noise level (%)", ylabel="LOIO R²",
        title="Graceful degradation — no cliff below ~10% noise")
@@ -846,9 +1376,26 @@ Honest out-of-fold predictions for every sample (each was predicted by a model
 that never saw its intensity). Pick a condition and compare sensor vs truth —
 this is what a *soft sensor* delivers, in real time (2.3–4.7 ms/layer in the
 paper's deployment test).
+
+---
+
+**Input** — `X_all` and `Y` again. The cell first computes and caches the
+**out-of-fold** predictions for all 50 prints: 10 LOIO folds, each model
+predicting only the five prints whose intensity it never saw.
+
+**What this cell does** — after caching, `dashboard()` looks up one print by
+(layer count, intensity), and plots measured versus predicted for the three
+targets with the relative error. `ipywidgets.interact` turns its two arguments
+into dropdowns over the values that actually exist in the design grid.
+
+**Output** — an interactive dashboard. This is the honest version of a sensor
+read-out: every number shown comes from a model that had never seen that
+exposure intensity, exactly as it would be on a new print.
 """),
 ("code", """\
-# cache out-of-fold RF predictions for all 50 samples (fast)
+# Cache out-of-fold RF predictions for all 50 samples (fast enough for a widget).
+# Out-of-fold = each sample is predicted by the one model that did NOT train on
+# its intensity, so the dashboard cannot flatter itself.
 preds = np.zeros_like(Y)
 for tr_idx, te_idx in LeaveOneGroupOut().split(X_all, Y, full.intensity.values):
     rf = RandomForestRegressor(300, random_state=0, n_jobs=-1)
@@ -858,23 +1405,25 @@ for tr_idx, te_idx in LeaveOneGroupOut().split(X_all, Y, full.intensity.values):
 import ipywidgets as w
 
 def dashboard(layers=15, intensity_pct=70):
+    \"\"\"Show measured vs predicted labels for one print of the design grid.\"\"\"
     m = (full.layer == layers) & (full.intensity == intensity_pct)
     if not m.any():
         print("no such sample"); return
     i = int(np.where(m)[0][0])
-    meas, pred = Y[i], preds[i]
+    meas, pred = Y[i], preds[i]              # truth and out-of-fold prediction
     names = ["thickness (mm)", "modulus (Pa)", "DoC (–)"]
     fig, axes = plt.subplots(1, 3, figsize=(10.5, 3))
     for ax, n, mv, pv in zip(axes, names, meas, pred):
         ax.bar(["measured", "predicted"], [mv, pv],
                color=["0.4", "tab:green"])
-        err = abs(pv - mv) / (abs(mv) + 1e-9) * 100
+        err = abs(pv - mv) / (abs(mv) + 1e-9) * 100      # relative error, %
         ax.set_title(f"{n}\\nerror {err:.1f}%")
     plt.suptitle(f"{layers} layers @ {intensity_pct}% intensity "
                  f"(I = {iu.INTENSITY_MW[intensity_pct]} mW/cm²) — "
                  "prediction from a model that never saw this intensity")
     plt.tight_layout(); plt.show()
 
+# Dropdowns are built from the values that actually exist in the design grid.
 w.interact(dashboard, layers=sorted(full.layer.unique()),
            intensity_pct=sorted(full.intensity.unique()));
 """),
