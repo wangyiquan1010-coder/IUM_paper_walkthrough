@@ -117,7 +117,7 @@ If you have never worked with ultrasound, these six words are all you need:
 | **A-scan** | one recorded waveform: amplitude versus time, from a single ultrasonic pulse. Here each A-scan has 62,509 points sampled at 2.5 GHz, i.e. one point every **0.4 ns**, covering ~25 µs. |
 | **frame** | one A-scan captured at one moment. We record **6 frames per printed layer**: a reference before the light turns on, then five during the 15 s exposure (3 s apart). |
 | **echo (B1, B2, B3)** | a reflected pulse returning from an interface. B1 comes back from the printhead's own bottom face, B2 from the bottom of the resin vat after travelling through the part, B3 is the same trip made twice. |
-| **envelope** | a smoothed version of `|signal|`. An ultrasonic echo is an oscillating burst, so its individual peaks are ambiguous; the envelope has one clear maximum, which is what we pick as "the echo arrival". |
+| **envelope** | a smoothed version of `abs(signal)`, i.e. the outline that wraps the oscillation. An ultrasonic echo is an oscillating burst whose individual peaks all look alike, so picking "the" peak is ambiguous; the envelope turns that burst into a single smooth hump with one clear maximum, and *that* maximum is what we report as the echo's arrival time. |
 | **ToF (time of flight)** | the time between two echoes, here B1 → B2, in microseconds. It is our first physical measurement: it grows as the part grows and shrinks as the material cures and becomes faster. |
 | **round trip** | the pulse goes *down and back*, so a ToF of 1 µs corresponds to **twice** the physical path. Always divide by 2 before converting ToF into a distance. |
 """),
@@ -273,7 +273,17 @@ ax.legend(loc="upper left"); plt.tight_layout(); plt.show()
 ("md", """\
 ### Interactive 3D waterfall (rotate me!)
 
-The same data as a rotatable 3D figure (plotly). Drag to rotate, scroll to zoom.
+The same data as a rotatable 3D figure (plotly). Drag to rotate, scroll to zoom
+— and **double-click to snap back to the starting view** at any time.
+
+The starting camera is fixed on purpose, so that everyone in the class begins
+from the same, readable orientation:
+
+- **x = time (µs)**, increasing **left → right**, same direction as every other
+  plot in this notebook;
+- **y = layer index**, increasing into the depth of the scene — the front row is
+  layer 1, the back row is layer 30;
+- **z = amplitude**, vertical.
 
 ---
 
@@ -282,7 +292,10 @@ rendering changes.
 
 **What this cell does** — builds one 3D line per layer with plotly, using time
 as x, layer index as y and amplitude as z, and adds the tracked B2 path as a
-green 3D curve so you can see the echo front sweeping through the stack.
+green 3D curve so you can see the echo front sweeping through the stack. It
+then pins the camera: plotly's default viewpoint sits at `eye = (1.25, 1.25,
+1.25)`, which makes the time axis run *right to left* on screen; a negative
+`eye.y` flips it back to the natural left-to-right reading order.
 
 **Output** — an interactive plotly figure. It works in Colab and in a live
 Jupyter kernel; in a plain static export of the notebook it may appear blank,
@@ -306,10 +319,21 @@ figly.add_trace(go.Scatter3d(
     z=[wf_30[li, -1, b] for li, b in enumerate(track30.b2_idx)],
     mode="lines+markers", line=dict(color="green", width=4),
     marker=dict(size=3), name="B2 track"))
-figly.update_layout(scene=dict(xaxis_title="time (µs)", yaxis_title="layer",
-                               zaxis_title="amplitude"),
-                    height=560, margin=dict(l=0, r=0, t=30, b=0),
-                    title="30-layer print — interactive waterfall")
+# Fix the starting viewpoint so the figure always opens the same way.
+# Screen-right direction is proportional to (-eye.y, eye.x, 0): plotly's default
+# eye = (1.25, 1.25, 1.25) therefore makes TIME run right-to-left. A negative
+# eye.y restores the normal left-to-right reading order, and the explicit
+# ascending ranges make the axis directions unambiguous.
+figly.update_layout(
+    scene=dict(
+        xaxis=dict(title="time (µs)  →", range=[t_us[sl][0], t_us[sl][-1]]),
+        yaxis=dict(title="layer (1 = front)", range=[0, wf_30.shape[0] + 1]),
+        zaxis=dict(title="amplitude (a.u.)"),
+        camera=dict(eye=dict(x=0.6, y=-2.0, z=0.8),    # viewer in front, slightly right
+                    up=dict(x=0, y=0, z=1)),           # keep z vertical
+        aspectmode="manual", aspectratio=dict(x=1.7, y=1.1, z=0.5)),
+    height=560, margin=dict(l=0, r=0, t=30, b=0),
+    title="30-layer print — interactive waterfall (double-click to reset the view)")
 figly.show()
 """),
 ("md", """\
@@ -366,12 +390,32 @@ ani
 ### The race: weak cure (I1) vs strong cure (I7)
 
 Two 15-layer prints, same geometry, different exposure intensity — side by side.
-Watch the **green marker (B2)**: at the same layer index the strongly cured
-sample returns its echo *earlier*, because curing raises the wave velocity.
+Because the two prints are identical in every respect except the light dose,
+**everything that differs between the two panels is caused by curing alone.**
+There are two distinct effects to watch, and they are the two independent ways
+in which the echo carries material information:
 
-> **Thickness moves B2 right; cure moves it left.** Two causes, one echo — this
-> entanglement is exactly what the machine-learning part of the series must
-> untangle.
+**① The echo arrives earlier — B2 shifts left.** Curing crosslinks the resin
+into a stiffer network, and a stiffer material carries sound *faster*. At the
+same layer index the acoustic path has the same length in both panels, so the
+strongly cured sample (I7) returns its echo sooner: its green marker sits to
+the left of the weakly cured one. This is a **velocity** effect, and it is what
+the ToF feature measures.
+
+**② The echo comes back weaker — the peak amplitude decays more.** Watch the
+*height* of the burst at the green marker, not just its position. The higher
+exposure intensity produces a denser, more crosslinked network, which absorbs
+and scatters more ultrasonic energy; so as layers accumulate, the I7 panel's
+peaks shrink noticeably faster than the I1 panel's. By the last layers the
+weakly cured sample actually returns the *larger* echo. This is an
+**attenuation** effect, and it is what the B2/B1 amplitude-ratio feature
+measures in Notebook 2.
+
+> So the same echo carries at least three competing influences: **thickness
+> moves B2 right, cure moves it left, and cure also pulls its amplitude down.**
+> One measurement, several causes — untangling them is exactly what the
+> machine-learning part of this series has to do, and it is why Notebook 2
+> designs *several* complementary features instead of relying on ToF alone.
 
 ---
 
@@ -428,19 +472,49 @@ ani2
 Use the sliders to pick a sample, a layer, and a frame. (On Colab the widgets
 are live; in a static render you see one snapshot.)
 
+**The two sliders are not interchangeable — they move along the two different
+time scales of this experiment, and this is the single most important idea in
+the whole series.** It is worth spending a few minutes here before moving on.
+
+**Moving the `layer` slider = the across-layer scale (minutes).** Each step is
+a whole new layer: the printer has recoated, the part is ~100 µm taller, and
+the acoustic path is physically longer. Watch the **green B2 marker travel to
+the right** — that is the part growing. Its amplitude also drifts as the beam
+crosses more and more cured material. Because both geometry *and* material
+change from one layer to the next, whatever you see here mixes the two.
+
+**Moving the `frame` slider = the within-layer scale (seconds).** Now stay on
+one layer and step through its 6 frames: frame 1 is the reference taken before
+the light turns on, frames 2–6 are taken every 3 s during the 15 s exposure.
+The printhead has not moved and no resin has been added, so **the acoustic path
+is frozen** — the geometry is literally constant. Anything that changes here
+can only come from the resin crosslinking: mostly a **decay of the peak
+amplitude** and a slight change of the burst's shape as the network stiffens
+and absorbs more. Notice that the red and green markers stay put while you do
+this, which is the visual statement that the window is fixed.
+
+The change within a layer is subtle to the eye — much smaller than what the
+layer slider does. That is expected, and it is exactly why Notebook 2 stops
+looking and starts *measuring* it, with frame-to-frame RMS and standard
+deviation. The payoff is worth the effort: because the geometry cannot change
+within a layer, those within-layer numbers are a **geometry-immune probe of
+curing** — the cleanest route we have to the degree of conversion.
+
 ---
 
 **Input** — all three prints and their tracking tables, collected into the
-`SAMPLES` dictionary. Note that here you can also choose the **frame** (1–6),
-i.e. the moment *within* one layer's exposure — the second time scale that
-Notebook 2 is built on.
+`SAMPLES` dictionary, so you can switch freely between the weak-cure and
+strong-cure prints at the same layer.
 
 **What this cell does** — defines a plotting function `browse()` whose arguments
 become widget controls, and hands it to `ipywidgets.interact`, which builds a
 dropdown plus two sliders automatically and re-runs the function on every change.
+The B1/B2 markers it draws come from the tracking table, which was computed on
+each layer's final frame — that is why they do not move when you change frames.
 
-**Output** — an interactive browser. Try the same layer of I1 and I7 and watch
-the green B2 line move.
+**Output** — an interactive browser. Two things worth trying: hold the layer
+fixed and switch between I1 and I7 to see the cure difference, then hold the
+sample fixed and sweep the layer slider to see the growth.
 """),
 ("code", """\
 import ipywidgets as w
@@ -477,23 +551,33 @@ carries material information (velocity).
 
 ---
 
-**Input** — only the three tracking tables (`track_i1`, `track_i7`, `track30`);
-the raw waveforms are no longer needed. We have compressed 62,509 points per
-frame down to **one number per layer**.
+**Input** — the two tracking tables of the controlled pair, `track_i1` and
+`track_i7`. The raw waveforms are no longer needed: we have compressed 62,509
+points per frame down to **one number per layer**.
 
-**What this cell does** — plots `tof_us` against layer index for the three
-prints on common axes.
+We deliberately plot *only* the two 15-layer prints here. The 30-layer sample
+is a different build — more layers means more accumulated exposure, a taller
+part and a longer print time — so putting its curve on the same axes would
+compare two things at once and nothing could be attributed cleanly. The I1/I7
+pair, in contrast, differs in **exactly one** variable, the exposure intensity,
+so any gap between the two curves is caused by the light dose alone.
+
+**What this cell does** — plots `tof_us` against layer index for the two prints
+on common axes.
 
 **Output** — the first real "process monitoring" curve of the series: a physical
-quantity measured *during* printing, without touching the part.
+quantity measured *during* printing, without touching the part. Both curves rise
+with the same overall geometry-driven trend, and the strongly cured print sits
+slightly lower because its waves travel faster.
 """),
 ("code", """\
 fig, ax = plt.subplots(figsize=(7, 4.2))
 # Each tracking table already contains tof_us per layer — one number per layer
 # distilled from 6 x 62509 raw points.
+# Only the controlled pair is plotted: same 15-layer geometry, only the exposure
+# intensity differs, so the gap between the curves is attributable to cure alone.
 for tr, name, c in [(track_i1, "15L @ I1 (weak cure)", "tab:blue"),
-                    (track_i7, "15L @ I7 (strong cure)", "tab:orange"),
-                    (track30, "30L @ I7", "tab:green")]:
+                    (track_i7, "15L @ I7 (strong cure)", "tab:orange")]:
     ax.plot(tr.layer, tr.tof_us, "o-", ms=4, color=c, label=name)
 ax.set(xlabel="layer index", ylabel="ToF(B1→B2)  (µs)",
        title="Time of flight grows with the part — and bends with cure")
