@@ -110,14 +110,13 @@ line, so the part is monitored continuously without interrupting printing.*
 ("md", """\
 ## Key terms before we start
 
-If you have never worked with ultrasound, these six words are all you need:
+If you have never worked with ultrasound, these five words are all you need:
 
 | term | meaning in this notebook |
 |---|---|
 | **A-scan** | one recorded waveform: amplitude versus time, from a single ultrasonic pulse. Here each A-scan has 62,509 points sampled at 2.5 GHz, i.e. one point every **0.4 ns**, covering ~25 µs. |
 | **frame** | one A-scan captured at one moment. We record **6 frames per printed layer**: a reference before the light turns on, then five during the 15 s exposure (3 s apart). |
 | **echo (B1, B2, B3)** | a reflected pulse returning from an interface. B1 comes back from the printhead's own bottom face, B2 from the bottom of the resin vat after travelling through the part, B3 is the same trip made twice. |
-| **envelope** | a smoothed version of `abs(signal)`, i.e. the outline that wraps the oscillation. An ultrasonic echo is an oscillating burst whose individual peaks all look alike, so picking "the" peak is ambiguous; the envelope turns that burst into a single smooth hump with one clear maximum, and *that* maximum is what we report as the echo's arrival time. |
 | **ToF (time of flight)** | the time between two echoes, here B1 → B2, in microseconds. It is our first physical measurement: it grows as the part grows and shrinks as the material cures and becomes faster. |
 | **round trip** | the pulse goes *down and back*, so a ToF of 1 µs corresponds to **twice** the physical path. Always divide by 2 before converting ToF into a distance. |
 """),
@@ -329,7 +328,7 @@ figly.update_layout(
         xaxis=dict(title="time (µs)  →", range=[t_us[sl][0], t_us[sl][-1]]),
         yaxis=dict(title="layer (1 = front)", range=[0, wf_30.shape[0] + 1]),
         zaxis=dict(title="amplitude (a.u.)"),
-        camera=dict(eye=dict(x=0.6, y=-2.0, z=0.8),    # viewer in front, slightly right
+        camera=dict(eye=dict(x=-0.6, y=-2.0, z=0.8),   # viewer in front, slightly left
                     up=dict(x=0, y=0, z=1)),           # keep z vertical
         aspectmode="manual", aspectratio=dict(x=1.7, y=1.1, z=0.5)),
     height=560, margin=dict(l=0, r=0, t=30, b=0),
@@ -477,8 +476,8 @@ time scales of this experiment, and this is the single most important idea in
 the whole series.** It is worth spending a few minutes here before moving on.
 
 **Moving the `layer` slider = the across-layer scale (minutes).** Each step is
-a whole new layer: the printer has recoated, the part is ~100 µm taller, and
-the acoustic path is physically longer. Watch the **green B2 marker travel to
+a whole new layer: the part is ~100 µm taller, and the acoustic path is
+physically longer. Watch the **green B2 marker travel to
 the right** — that is the part growing. Its amplitude also drifts as the beam
 crosses more and more cured material. Because both geometry *and* material
 change from one layer to the next, whatever you see here mixes the two.
