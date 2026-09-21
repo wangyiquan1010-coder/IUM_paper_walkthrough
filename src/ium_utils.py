@@ -163,8 +163,20 @@ def spectral_features(x, fs=FS, band=(2e6, 30e6)):
     return fc, bw
 
 
+def wavelet_energies(x, wavelet="db4", level=3):
+    """Energy of each band of a discrete wavelet decomposition.
+
+    `pywt.wavedec` returns [cA_level, cD_level, ..., cD_1] - one approximation
+    band followed by `level` detail bands, coarse to fine. The feature is the
+    energy (sum of squared coefficients) of each band, which is the definition
+    used by the paper's extraction code (db4, 3 levels -> 4 numbers).
+    """
+    import pywt
+    return [float(np.sum(c ** 2)) for c in pywt.wavedec(x, wavelet, level=level)]
+
+
 def layer_features(wf_layer, b1_idx, b2_idx, win=800):
-    """Compute the teaching subset of layer-wise features for one layer.
+    """Compute the 11 layer-wise features for one layer.
 
     wf_layer : (n_frames, N)   all frames of this layer
     b1_idx, b2_idx : tracked echo positions for this layer [sample index]
@@ -174,10 +186,12 @@ def layer_features(wf_layer, b1_idx, b2_idx, win=800):
     Two scales, as in the paper's framework:
       * across-layer features use the FINAL frame only (end of exposure) ->
         ToF [us], B2/B1 envelope amplitude ratio [-], RMS energy [a.u.],
-        center frequency and bandwidth [Hz];
+        center frequency and bandwidth [Hz], four wavelet-band energies [a.u.];
       * within-layer features use ALL frames of the same, frozen window ->
         frame_diff_rms and within_layer_std [a.u.]. The acoustic path cannot
         change during one exposure, so these are geometry-immune cure probes.
+
+    Notebook 2 spells the same arithmetic out step by step, with the formulas.
     """
     x = wf_layer[-1].astype(float)
     e = _env(x)
@@ -186,16 +200,21 @@ def layer_features(wf_layer, b1_idx, b2_idx, win=800):
     seg = x[b2_idx - win: b2_idx + win]
     fc, bw = spectral_features(seg)
     rms_energy = float(np.sqrt(np.mean(seg ** 2)))
-    # within-layer: frame-to-frame differences in a fixed window around B2
+    # within-layer: frame-to-frame differences in a fixed window around B2.
+    # Mean of the per-pair RMS values, as in the paper's extraction code.
     frames = wf_layer[:, b2_idx - win: b2_idx + win].astype(float)
     diffs = np.diff(frames, axis=0)
-    within_rms = float(np.sqrt(np.mean(diffs ** 2)))
+    within_rms = float(np.mean([np.sqrt(np.mean(d ** 2)) for d in diffs]))
     within_std = float(np.std(frames, axis=0).mean())
-    return dict(ToF=(b2_idx - b1_idx) * DT_NS / 1000.0,
-                amplitude=float(b2_amp / (b1_amp + 1e-9)),
-                RMS_Energy=rms_energy,
-                Center_Freq=fc, Bandwidth=bw,
-                frame_diff_rms=within_rms, within_layer_std=within_std)
+    out = dict(ToF=(b2_idx - b1_idx) * DT_NS / 1000.0,
+               amplitude=float(b2_amp / (b1_amp + 1e-9)),
+               RMS_Energy=rms_energy,
+               Center_Freq=fc, Bandwidth=bw)
+    for k, energy in enumerate(wavelet_energies(seg)):
+        out[f"Wavelet_Energy_L{k}"] = energy
+    out["frame_diff_rms"] = within_rms
+    out["within_layer_std"] = within_std
+    return out
 
 
 # ----------------------------------------------------------------------------

@@ -772,60 +772,114 @@ window, and therefore immune to geometry:
 | `frame_diff_rms` | a.u. | root-mean-square of the frame-to-frame differences: how much the echo moves from one 3 s snapshot to the next while the light is on. |
 | `within_layer_std` | a.u. | the per-sample standard deviation across the six frames, averaged over the window: the same idea, measured as spread instead of as step-to-step change. |
 
-> **Why the table below has 7 columns and not 11.** `iu.layer_features()` is a
-> teaching re-implementation, and it rebuilds the seven descriptors whose
-> definition is short enough to read in one screen: `ToF`, `amplitude`,
-> `RMS_Energy`, `Center_Freq`, `Bandwidth`, `frame_diff_rms` and
-> `within_layer_std`. The four `Wavelet_Energy_*` bands are deliberately left
-> out here — they need an extra wavelet library and a choice of basis and level
-> that would distract from the physics, and nothing in this notebook's argument
-> depends on them. They are *not* missing from the dataset: all **11** are
-> present in `data/feature11.csv` and all 11 are used by the models in
-> Notebooks 3 and 4. So: 11 features per layer in the dataset, 7 of them
-> rebuilt from raw waveforms here.
-
 ---
 
 **Input** — the raw frames of one layer (`wf[li]`, shape 6 × 62509) plus that
-layer's tracked `b1_idx` and `b2_idx`. Nothing else: every window is positioned
-relative to the echoes.
+layer's tracked `b1_idx` and `b2_idx`. Nothing else: every window below is
+positioned relative to the echoes, never at a fixed absolute time.
 
-**What this cell does** — loops over the layers of a print and calls
-`iu.layer_features()`, which implements the two scales explicitly:
+**What this cell does** — computes all eleven descriptors from the raw samples,
+written out step by step with the formula for each one, so you can see exactly
+what every number in the dataset means. Nothing is read from a precomputed
+file here.
 
-- *across-layer* features use the **final frame** (end of exposure): ToF from
-  the B1→B2 index difference, `amplitude` as the B2/B1 envelope ratio,
-  `RMS_Energy`, and the spectral pair `Center_Freq` / `Bandwidth` from an FFT of
-  a ±800-sample window around B2;
-- *within-layer* features use **all six frames** of the same window:
-  `frame_diff_rms` (root-mean-square of frame-to-frame differences) and
-  `within_layer_std`.
-
-**Output** — `F1` and `F7`: one row per layer, one column per feature, indexed
-by layer number. The `.head().round(4)` call prints the first five rows so you
-can see the actual numbers and units.
+**Output** — `F1` and `F7`: one row per layer, eleven columns, indexed by layer
+number. The `.head()` call prints the first five rows so you can see the actual
+values and units.
 """),
 ("code", """\
-def features_for(wf, track):
-    \"\"\"Compute the layer-wise feature table for one print.
+import pywt          # PyWavelets — preinstalled on Colab
 
-    wf    : (n_layers, 6 frames, 62509 points) raw waveforms
-    track : tracking table with b1_idx / b2_idx per layer
-    returns: DataFrame, one row per layer, one column per feature
+WIN = 800            # half-width of the analysis window around B2 [samples]
+                     # 800 samples = 0.32 µs, wide enough to hold the whole burst
+
+
+def layer_features_explicit(frames, b1_idx, b2_idx):
+    \"\"\"The 11 layer-wise descriptors for ONE layer, computed from scratch.
+
+    frames         : (6, 62509) all frames of this layer, raw amplitudes
+    b1_idx, b2_idx : tracked echo positions for this layer [sample index]
     \"\"\"
+    f = {}
+    x = frames[-1].astype(float)          # final frame = end of the exposure
+
+    # --- envelope ----------------------------------------------------------
+    # An echo is an oscillating burst whose individual peaks all look alike, so
+    # we work with its envelope: the rectified signal, smoothed with a boxcar.
+    #     env[n] = (1/K) * SUM_k |x[n-k] - median(x)| ,  K = 101 (= 40 ns)
+    rect = np.abs(x - np.median(x))       # median removes the digitizer's DC offset
+    env = np.convolve(rect, np.ones(101) / 101, mode="same")
+
+    # --- 1. ToF ------------------------------------------------------------
+    #     ToF = (b2 - b1) * dt ,   dt = 1 / 2.5 GHz = 0.4 ns
+    f["ToF"] = (b2_idx - b1_idx) * iu.DT_NS / 1000.0                   # µs
+
+    # --- 2. amplitude ratio -------------------------------------------------
+    #     amplitude = env[b2] / env[b1]
+    # Dividing by B1 is what makes this a *material* measurement: B1 never
+    # leaves the printhead, so any drift in coupling or pulse energy scales
+    # both echoes and cancels in the ratio.
+    f["amplitude"] = float(env[b2_idx] / (env[b1_idx] + 1e-9))         # -
+
+    # Every remaining across-layer feature reads the same window around B2.
+    seg = x[b2_idx - WIN : b2_idx + WIN]               # 1600 samples = 0.64 µs
+
+    # --- 3. RMS energy ------------------------------------------------------
+    #     RMS = sqrt( mean( seg^2 ) )   — how much energy came back in total
+    f["RMS_Energy"] = float(np.sqrt(np.mean(seg ** 2)))                # a.u.
+
+    # --- 4 & 5. spectral centroid and bandwidth -----------------------------
+    # Power spectrum of the echo (mean removed so the DC bin carries no weight):
+    #     P(f) = |FFT(seg - mean(seg))|^2
+    # Centroid  fc = SUM(f * P) / SUM(P)                   — "average" frequency
+    # Bandwidth bw = sqrt( SUM((f - fc)^2 * P) / SUM(P) )  — its spread
+    # Restricted to 2-30 MHz, the band where this 10 MHz transducer has gain.
+    P = np.abs(np.fft.rfft(seg - seg.mean())) ** 2
+    freqs = np.fft.rfftfreq(len(seg), d=1 / iu.FS)
+    keep = (freqs >= 2e6) & (freqs <= 30e6)
+    Pb, fb = P[keep], freqs[keep]
+    fc = float((fb * Pb).sum() / Pb.sum())
+    f["Center_Freq"] = fc                                              # Hz
+    f["Bandwidth"] = float(np.sqrt(((fb - fc) ** 2 * Pb).sum() / Pb.sum()))
+
+    # --- 6-9. wavelet-band energies -----------------------------------------
+    # A Daubechies-4 transform with 3 levels splits the echo into four bands,
+    # returned coarse-to-fine as [cA3, cD3, cD2, cD1]. The feature is each
+    # band's energy:
+    #     Wavelet_Energy_Lk = SUM( c_k^2 )
+    # Why bother, when we already have a centroid? The FFT pair above averages
+    # over the whole window and forgets WHEN each frequency arrived; wavelet
+    # bands keep that, so they see changes in the burst's shape, not just its
+    # average pitch.
+    for k, c in enumerate(pywt.wavedec(seg, "db4", level=3)):
+        f[f"Wavelet_Energy_L{k}"] = float(np.sum(c ** 2))              # a.u.
+
+    # --- 10 & 11. within-layer features -------------------------------------
+    # Same window, but now all six frames. The printhead does not move during
+    # an exposure, so these two see chemistry and nothing else.
+    block = frames[:, b2_idx - WIN : b2_idx + WIN].astype(float)
+    diffs = np.diff(block, axis=0)              # 5 consecutive frame differences
+    #     frame_diff_rms = mean_i( sqrt( mean( diff_i^2 ) ) )
+    f["frame_diff_rms"] = float(np.mean([np.sqrt(np.mean(d ** 2)) for d in diffs]))
+    #     within_layer_std = mean_n( std over the 6 frames at sample n )
+    f["within_layer_std"] = float(np.std(block, axis=0).mean())
+    return f
+
+
+def features_for(wf, track):
+    \"\"\"Apply the above to every layer of one print -> one row per layer.\"\"\"
     rows = []
     for li in range(wf.shape[0]):
         r = track.iloc[li]
-        # Pass ALL frames of this layer: layer_features() uses the last frame
-        # for the across-layer features and all six for the within-layer ones.
-        f = iu.layer_features(wf[li], int(r.b1_idx), int(r.b2_idx))
+        f = layer_features_explicit(wf[li], int(r.b1_idx), int(r.b2_idx))
         f["layer"] = li + 1
         rows.append(f)
     return pd.DataFrame(rows).set_index("layer")
 
 F1 = features_for(wf_i1, track_i1)      # weak cure
 F7 = features_for(wf_i7, track_i7)      # strong cure
-F1.head().round(4)
+print("features per layer:", F1.shape[1])
+F1.head()
 """),
 ("md", """\
 ### Do the features separate the two intensities?
@@ -1029,7 +1083,7 @@ for base in BASES_SHOWN:
 1. Recreate the heatmaps for the 10-layer group. Does within-layer RMS depend
    on exposure there in any consistent way? Compare with the 30-layer group and
    state what evidence would convince you either way.
-2. `iu.layer_features` uses the **last** frame of each layer for the
+2. `layer_features_explicit` uses the **last** frame of each layer for the
    across-layer features. Re-run section 2 using the *reference* frame
    (index 0) instead. Which features change most, and why?
 3. Design ONE new feature you believe tracks curing but not geometry. Compute
