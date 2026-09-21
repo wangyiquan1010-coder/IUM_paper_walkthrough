@@ -667,50 +667,29 @@ to the B2 echo. The path cannot change — everything you see moving is
 
 ---
 
+Both panels are **normalised to their own first frame**, so they share one
+vertical scale and can be compared directly: every trace starts at ±1, and what
+you watch is the *fraction* of the echo that survives as curing proceeds.
+
+> The strongly cured echo is about five times weaker in raw counts, so fewer
+> digitizer steps describe it and its trace looks coarser. Nothing is smoothed —
+> that is quantization, not filtering.
+
+---
+
 **Input** — one single layer (layer 8) of each print, i.e. `wf_i1[7]` and
 `wf_i7[7]`: **6 frames × 62,509 points** each. This time the animation's frames
 are the *within-layer* snapshots, not layers.
 
 **What this cell does** — cuts a ±500-sample window (±0.2 µs) centred on that
-layer's tracked B2 position and animates the six frames inside it. Because the
-printhead does not move during an exposure, the window content can only change
-through curing. It also prints the peak-to-peak amplitude of every frame, so
-that the discussion below rests on numbers rather than on impressions.
+layer's tracked B2 position, normalises it by the reference frame, and animates
+the six frames. Because the printhead does not move during an exposure, the
+window content can only change through curing.
 
-> **Why does the right panel look coarse and "stepped" while the left one looks
-> smooth?** Not because one of them is filtered — nothing here is smoothed, and
-> both panels are drawn by the same code from the same kind of raw samples. The
-> reason is the digitizer's resolution becoming visible:
->
-> 1. At this layer the strongly cured print returns a much **weaker echo** —
->    peak-to-peak ≈ 8×10³ against ≈ 4×10⁴ for the weak-cure print, about five
->    times smaller. That is the attenuation effect from Notebook 1.
-> 2. The oscilloscope quantizes every sample onto a fixed ladder of levels,
->    about **257 counts apart** in these stored units. So the weak echo is
->    described by only ~32 levels, while the strong one has ~156.
-> 3. Each panel is then auto-scaled to its own data, so that its frame-to-frame
->    change stays visible at all. Stretching 32 levels to fill the panel makes
->    the ladder plainly visible as a staircase; 156 levels still read as a
->    smooth curve.
->
-> The cell prints both numbers so you can check this rather than take it on
-> faith. Two practical consequences: **how much motion you see is not comparable
-> across the two panels**, only within one — and the weaker the echo, the more
-> of what looks like "signal change" may be quantization.
-
-**Output** — a two-panel animation plus the per-frame amplitudes. What the
-numbers show for this layer: in both prints the burst gets *weaker* as the
-exposure proceeds (about −8% from the first to the last frame for the weak-cure
-print, about −19% for the strongly cured one), while the frame-to-frame change
-itself is of similar absolute size in the two prints (a few hundred counts).
-Relative to its own, much smaller echo, that makes the strongly cured print's
-signal the more *relatively* variable of the two — the opposite of what the
-zoomed-out panel alone might suggest.
-
-> Treat this as one layer of one print, not as a rule. Whether within-layer
-> motion is systematically larger for weak or for strong cure is exactly the
-> kind of question a single animation cannot settle; section 4 looks at all 50
-> prints, and Notebook 3 tests it properly.
+**Output** — a two-panel animation plus the per-frame amplitude. Both bursts
+weaken during the 15 s exposure, the strongly cured one more steeply (about
+−19% against −8%). That is one layer of one print, not a rule — section 4 puts
+the question to all 50.
 """),
 ("code", """\
 from matplotlib.animation import FuncAnimation
@@ -727,20 +706,19 @@ for ax, (wfS, r, name) in zip(axes, [(wf_i1, r1, "I1 (weak cure)"),
     seg_t = t_us[b2-w1:b2+w1]
     block = wfS[LAYER-1, :, b2-w1:b2+w1].astype(float)   # (6 frames, 2*w1)
     # Remove ONE common baseline (the digitizer's DC offset) from all six frames
-    # so the burst is centred on zero. Using a single offset for the whole layer
-    # leaves the frame-to-frame differences - the thing we came to see - intact.
+    # so the burst is centred on zero. A single offset for the whole layer keeps
+    # the frame-to-frame differences - the thing we came to see - intact.
     block = block - np.median(block)
-    # Symmetric limits from the data. (A naive min*1.1 / max*1.1 would clip the
-    # trace whenever the window happens to sit entirely below zero.)
-    lim = 1.1 * np.abs(block).max()
+    # Normalise by the REFERENCE frame, again one number for the whole layer.
+    # Both panels then start at +-1 and share the axis below, so the amount of
+    # motion you see is directly comparable between weak and strong cure.
+    block = block / np.abs(block[0]).max()
     ln, = ax.plot([], [], lw=1.2)
     tx = ax.text(0.03, 0.9, "", transform=ax.transAxes)
-    # Each panel is auto-scaled to its OWN echo, otherwise the weaker one would
-    # be a flat line; the title states the scale so the two stay comparable.
-    ax.set(xlim=(seg_t[0], seg_t[-1]), ylim=(-lim, lim), xlabel="time (µs)",
-           title=f"{name} — layer {LAYER}\\nvertical scale ±{lim:,.0f} a.u.")
+    ax.set(xlim=(seg_t[0], seg_t[-1]), ylim=(-1.25, 1.25), xlabel="time (µs)",
+           title=f"{name} — layer {LAYER}")
     arts.append((ln, tx, seg_t, block))
-axes[0].set_ylabel("amplitude (baseline removed)")
+axes[0].set_ylabel("amplitude / reference frame")
 
 def upd(f):
     \"\"\"Show frame f of the same layer in both panels (f=0 is the reference).\"\"\"
@@ -751,19 +729,12 @@ def upd(f):
         out += [ln, tx]
     return out
 
-# Quantify what the animation shows — the two panels are drawn at different
-# vertical scales, so only these numbers can be compared directly.
+# Amplitude per frame, as a fraction of the reference frame — the same numbers
+# the animation shows, now directly comparable between the two panels.
 for name, (_, _, _, block) in zip(["I1 weak  ", "I7 strong"], arts):
     p2p = block.max(axis=1) - block.min(axis=1)
-    # Estimate the digitizer's quantization step from the data itself:
-    # consecutive samples either repeat a level or jump by a multiple of it,
-    # so the typical non-trivial jump IS the step.
-    jumps = np.abs(np.diff(block, axis=1))
-    step = np.median(jumps[jumps > 10])
-    print(f"{name} peak-to-peak per frame: {np.round(p2p).astype(int)}   "
-          f"({(p2p[-1] / p2p[0] - 1) * 100:+.0f}% first -> last frame)")
-    print(f"{' ' * len(name)} digitizer step ~{step:.0f} counts  ->  "
-          f"{p2p.max() / step:.0f} quantization levels span this panel")
+    print(f"{name} amplitude per frame: {np.round(p2p / p2p[0], 3)}   "
+          f"({(p2p[-1] / p2p[0] - 1) * 100:+.0f}% over the exposure)")
 
 ani = FuncAnimation(fig, upd, frames=6, interval=600, blit=False)
 plt.close(fig)
