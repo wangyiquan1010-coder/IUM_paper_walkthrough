@@ -1063,18 +1063,17 @@ without fooling ourselves.
 # ==============================================================================
 nb3 = [
 ("md", """\
-# 03 · Learning Without Fooling Yourself — Attention Fusion and the Leakage Trap
+# 03 · Building and Training the Model
 
 **IUM teaching series, Notebook 3/4** · Wang & Zhao, *Additive Manufacturing*
 (2026) 105300.
 
-This is the methodological heart of the series. You will:
+We now have features. This notebook turns them into a working soft sensor:
 
-1. assemble the paper's **344-dimensional** sample representation;
-2. *see* why random cross-validation lies for this dataset (a true story from
-   this paper's peer review!);
-3. run the honest protocol — **Leave-One-Intensity-Out (LOIO)**;
-4. train the paper's deployed **three-branch attention-fusion network**.
+1. assemble the **344-dimensional** sample representation;
+2. choose how to split the data for training and testing — and see why that
+   choice decides whether the reported numbers mean anything;
+3. build and train the **three-branch attention-fusion network**.
 """),
 ("md", """\
 ## Machine-learning vocabulary used in this notebook
@@ -1137,62 +1136,26 @@ print(f"{len(full)} samples;  layer counts {sorted(full.layer.unique())};  "
 full[["layer", "intensity"] + iu.LABEL_COLS].head()
 """),
 ("md", """\
-## 2. Look at the feature space first
+## 2. How we split the data — and why it decides everything
 
-PCA of the 330 layer-wise features. **Color = intensity, size = layer count.**
-Samples cluster by their process condition — remember this picture: it is the
-geometric reason why a random train/test split leaks.
+Before training anything, we have to choose which samples the model is tested
+on. The obvious choice is a random split: shuffle the 50 prints, train on 40,
+test on 10. For this dataset that choice is wrong, and badly so.
 
----
+The reason is the design of the experiment. Each exposure intensity was printed
+five times, at five different layer counts. So if a randomly held-out print was
+made at 70% lamp power, four other prints at exactly 70% are still in the
+training set. The model does not have to understand the ultrasound at all: it
+can look up `intensity = 70`, recall what those neighbours looked like, and
+interpolate. The score that comes out measures memorisation of the recipe, not
+sensing.
 
-**Input** — the 330 layer-wise columns of `full` (`iu.seq_columns()` returns
-them sorted by layer then feature name). Labels are *not* used: this is
-unsupervised.
-
-**What this cell does** — standardises the columns, then compresses 330
-dimensions to 2 with PCA (Principal Component Analysis: it finds the directions
-along which the samples differ most) so we can look at the dataset's geometry.
-
-**Output** — an interactive scatter plot; hover a point to see that print's
-layer count and three labels. The clustering you see by color is the visual
-explanation of the leakage demonstrated in the next section.
-
-> Note: this PCA is fitted on all 50 samples on purpose — it is a *picture* of
-> the data, not a model being evaluated. In section 3 we start being strict.
-"""),
-("code", """\
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
-import plotly.express as px
-
-seq_cols = iu.seq_columns(full)                      # the 330 layer-wise columns
-# Standardise first: ToF (µs), frequencies (Hz) and ratios have wildly different
-# magnitudes, and PCA would otherwise simply follow the largest units.
-Z = StandardScaler().fit_transform(full[seq_cols].values)
-P = PCA(n_components=2).fit(Z)
-XY = P.transform(Z)                                  # 50 samples × 2 components
-
-pdf = pd.DataFrame(dict(PC1=XY[:, 0], PC2=XY[:, 1],
-                        intensity=full.intensity.astype(str),   # color
-                        layers=full.layer,                      # marker size
-                        thickness=full.thickness.round(2),      # hover info
-                        modulus=full.modulus.round(0),
-                        DoC=full.DoC.round(3)))
-fig = px.scatter(pdf, x="PC1", y="PC2", color="intensity", size="layers",
-                 hover_data=["layers", "thickness", "modulus", "DoC"],
-                 title=f"Feature space (PCA of layer-wise features) — "
-                       f"{P.explained_variance_ratio_[:2].sum():.0%} variance shown")
-fig.update_layout(height=520)
-fig.show()
-"""),
-("md", """\
-## 3. The leakage trap — a true peer-review story
-
-The paper's first submission used random K-fold CV. A reviewer objected:
-*a randomly held-out sample always has same-intensity neighbors in training, so
-a model can interpolate from the nominal settings — the ultrasonic features are
-never actually tested.* The authors rebuilt the whole evaluation. Let's
-reproduce both worlds with a fast Random Forest:
+What a deployed sensor actually faces is a print whose settings it has never
+seen. So we hold out **one whole intensity at a time**: all five prints made at
+that lamp power go into the test set together, and the model must extrapolate
+to it. Ten intensities, ten folds — **Leave-One-Intensity-Out (LOIO)**. Let's
+measure how much the choice is worth, using a fast Random Forest so the
+comparison is about the protocol and not the model.
 
 ---
 
@@ -1218,6 +1181,7 @@ from sklearn.model_selection import KFold, LeaveOneGroupOut
 from sklearn.metrics import r2_score
 
 # Build the sample representation: 330 layer-wise + 2 process + 12 part-scale.
+seq_cols = iu.seq_columns(full)                   # the 330 Layer_{i}_{feature} columns
 X = full[seq_cols + ["layer", "intensity"]].values
 X_stats = iu.part_scale_stats(full).values        # 12 global descriptors
 X_all = np.hstack([X, X_stats])
@@ -1259,12 +1223,34 @@ scenario for a real sensor.
 > intensity is absent from training; ② every scaler is fitted on the training
 > partition only; ③ any augmentation would be applied to training folds only.
 
-## 4. The deployed model — three-branch attention fusion
+## 3. The model — three-branch attention fusion
 
-Branches: part-scale stats → MLP(32) · layer-wise sequences → CNN+Bi-LSTM(128)
-· printing conditions → MLP(16). A sigmoid attention gate weighs the 176-d
-fusion vector (readable — Notebook 4), and a shared head predicts all three
-targets jointly.
+![architecture](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/model_architecture.png)
+
+*The paper's full architecture. Each input group gets its own branch, the
+branch outputs are concatenated, an attention gate reweights that vector, and a
+shared head predicts all three targets at once.*
+
+Reading the diagram from left to right:
+
+- **part-scale statistics** (12 numbers per print) → a small MLP → 32 channels;
+- **layer-wise features** (30 layer slots × 11 features) → a 1-D convolution
+  followed by a bidirectional LSTM and global max pooling → 128 channels. The
+  convolution looks at neighbouring layers, the LSTM at the whole build history;
+- **printing conditions** (layer count, intensity) → a tiny MLP → 16 channels;
+- **raw waveforms** → a deeper CNN → 128 channels.
+
+The **attention gate** is the part worth understanding. It takes the
+concatenated vector, passes it through a small MLP ending in a sigmoid, and
+multiplies the vector by the result. Each channel therefore gets its own weight
+between 0 and 1, and those weights are readable — Notebook 4 opens them up to
+ask whether the ultrasound really contributes more than the nominal recipe.
+
+This notebook trains the **deployed configuration (the paper's Case 5)**, which
+is the diagram *without* the raw-waveform branch: 32 + 128 + 16 = **176**
+channels instead of 304. Feeding 62,509 raw points per layer to a network
+trained on 50 prints overfits badly; the designed features are what make the
+problem learnable at this sample size.
 
 ---
 
@@ -1281,8 +1267,9 @@ converts the predictions back to physical units (`sc_y.inverse_transform`,
 inside `iu.predict`) and stores them. Afterwards it aggregates all 50
 out-of-fold predictions into one honest score table.
 
-**Output** — per-fold R² printed live, and `agg`: the aggregate RMSE and R² per
-target. On a Colab GPU this takes ~4 minutes; on CPU roughly 20–30.
+**Output** — per-fold RMSE printed live (in mm, Pa and DoC units), and `agg`:
+the aggregate RMSE and R² over all 50 out-of-fold predictions. On a Colab GPU
+this takes ~4 minutes; on CPU roughly 20–30.
 
 > Classroom budget: 60 epochs, single seed. The paper uses 100 epochs × 5 seeds,
 > so expect numbers that are close but slightly lower — and a little different
@@ -1307,10 +1294,13 @@ for tr_df, te_df, inten in iu.loio_folds(full):
     # predict() also undoes the label scaling, so yp is in physical units.
     yp = iu.predict(net, a_te, sc_y)
     all_pred.append(yp); all_true.append(te_df[iu.LABEL_COLS].values)
-    fold_r2 = iu.metrics(te_df[iu.LABEL_COLS].values, yp)["R2"]
-    results.append(dict(intensity=inten, **fold_r2))
-    print(f"held-out intensity {inten:3d}%:  "
-          + "  ".join(f"{l} R²={fold_r2[l]:+.2f}" for l in iu.LABEL_COLS))
+    # Per fold we print RMSE, not R². A fold holds only 5 prints made at one
+    # intensity, so their labels barely vary; R² divides by that tiny variance
+    # and becomes wild. RMSE is in physical units and stays meaningful.
+    fold_rmse = iu.metrics(te_df[iu.LABEL_COLS].values, yp)["RMSE"]
+    results.append(dict(intensity=inten, **fold_rmse))
+    print(f"held-out intensity {inten:3d}%:   "
+          + "   ".join(f"{l} RMSE={fold_rmse[l]:8.4g}" for l in iu.LABEL_COLS))
 
 # Stack the 10 folds: every one of the 50 samples now has exactly one prediction
 # made by a model that never saw its intensity.
@@ -1324,50 +1314,23 @@ Notes on what you should see (numbers vary a little with hardware/seed):
 
 - **Thickness** R² ≈ 0.97+ — geometry lives in ToF; easy.
 - **DoC** R² ≈ 0.6–0.75 — the within-layer probes carry it.
-- **Modulus** is hardest, and the *edge folds* (I1, I10) are the worst — the
-  model must extrapolate beyond the calibrated intensity range. The paper's
-  full protocol (100 epochs, 5 seeds, mild noise augmentation) reports
-  0.985 / 0.832 / 0.757.
+- **Modulus** is the hardest of the three. The paper's full protocol
+  (100 epochs, 5 seeds, mild noise augmentation) reports 0.985 / 0.832 / 0.757.
 
----
+**A note on R².** R² compares the model's error with the variance of the labels
+themselves: 1 means perfect, 0 means no better than always predicting the mean,
+and negative means worse than that. It can never exceed 1 — if you see `1.00`
+printed anywhere, it is a rounded 0.995-or-so, not a number above one.
 
-**Input** — `YT` and `YP`: the 50 measured and 50 predicted label triplets
-collected in the training loop, plus `full.intensity` for the coloring.
-
-**What this cell does** — draws a parity plot per target: measured on x,
-predicted on y, with the diagonal marking perfect prediction. The color encodes
-which fold each point came from, which is the fastest way to spot the edge-fold
-behaviour described above.
-
-**Output** — three scatter plots. Points far from the diagonal, grouped by
-color, mean a whole intensity was predicted badly — much more informative than
-a single aggregate R².
-"""),
-("code", """\
-fig, axes = plt.subplots(1, 3, figsize=(13, 4))
-for i, (ax, l, unit) in enumerate(zip(axes, iu.LABEL_COLS, ["mm", "Pa", ""])):
-    # Color = exposure intensity = which LOIO fold this point was held out in.
-    ax.scatter(YT[:, i], YP[:, i], s=28, alpha=0.7,
-               c=full.intensity.values, cmap="viridis")
-    lo, hi = YT[:, i].min(), YT[:, i].max()
-    ax.plot([lo, hi], [lo, hi], "k--", lw=1)      # perfect-prediction diagonal
-    ax.set(xlabel=f"measured {l} ({unit})", ylabel=f"predicted {l}",
-           title=f"{l}:  R² = {agg.loc[l, 'R2']:.3f}")
-plt.suptitle("LOIO out-of-fold predictions (color = exposure intensity)")
-plt.tight_layout(); plt.show()
+This is also why we print RMSE per fold and keep R² for the aggregate. A single
+fold contains only 5 prints, all made at the same intensity, so their labels are
+nearly identical and the variance R² divides by is tiny. Dividing by it makes
+per-fold R² swing wildly — a modest error can come out as a large negative
+number — even when the predictions are perfectly reasonable. The aggregate over
+all 50 out-of-fold predictions spans the real spread of the dataset, so its R²
+means what you expect it to mean.
 """),
 ("md", """\
-## Exercises
-
-1. Re-run the leakage comparison with `groups=full.layer.values`
-   (leave-one-layer-count-out). Which protocol is harder, LOIO or LOLO, and
-   what does each simulate in deployment?
-2. Drop the two printing-condition columns from `X_all` in section 3 and
-   re-run both protocols. How much of the "random-split" performance was the
-   recipe alone? *(This is the paper's Case-2-vs-Case-5 question.)*
-3. Train the network with `EPOCHS=20` and `EPOCHS=100`. Which target benefits
-   most from longer training, and why might that be?
-
 **Next notebook:** opening the black box — attention gates, feature importance,
 and what it takes to deploy.
 """),
