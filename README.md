@@ -54,7 +54,7 @@ tools/       extract_teaching_data.py, make_notebooks.py (maintainers only)
 
 ## For instructors
 
-Each notebook ends with exercises; Notebook 4 contains a mini-capstone
+Most notebooks end with exercises; Notebook 4 contains a mini-capstone
 (design your own feature and evaluate it leak-free). The series is designed
 for two 75-minute sessions (NB1–2, NB3–4) plus homework.
 

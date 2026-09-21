@@ -755,22 +755,52 @@ to.
 end of its exposure), all inside a ±800-sample window placed around the tracked
 B2 echo:
 
-| feature | unit | what it measures |
-|---|---|---|
-| `ToF` | µs | arrival-time difference B1 → B2. The acoustic path length divided by the wave speed, so it responds both to the part growing and to the material getting faster as it cures. |
-| `amplitude` | – | the B2/B1 envelope ratio, i.e. how much of the echo survives the trip through the part. Dividing by B1 is deliberate: B1 never leaves the printhead, so the ratio cancels drifts in transducer coupling or pulse energy and leaves attenuation. |
-| `RMS_Energy` | a.u. | root-mean-square amplitude of the B2 window — the total energy coming back, without normalising by B1. |
-| `Center_Freq` | Hz | the spectral centroid of the echo (2–30 MHz band). Cured polymer absorbs high frequencies more strongly than low ones, so the centroid moves as the material changes. |
-| `Bandwidth` | Hz | the spectral spread about that centroid — how much the pulse has been broadened and reshaped on its way through the part. |
-| `Wavelet_Energy_L0` … `L3` | a.u. | energy in four wavelet decomposition bands. Unlike the FFT-based pair above, a wavelet split keeps *where in the burst* the energy sits, so these four capture changes in the echo's shape that a single centroid would average away. |
+<table style="border-collapse:collapse">
+<thead><tr>
+<th style="border:1px solid #999;padding:5px 9px;text-align:left">feature</th>
+<th style="border:1px solid #999;padding:5px 9px;text-align:left">unit</th>
+<th style="border:1px solid #999;padding:5px 9px;text-align:left">what it measures</th>
+</tr></thead>
+<tbody>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>ToF</code></td>
+<td style="border:1px solid #999;padding:5px 9px">µs</td>
+<td style="border:1px solid #999;padding:5px 9px">arrival-time difference B1 → B2. The acoustic path length divided by the wave speed, so it responds both to the part growing and to the material getting faster as it cures.</td></tr>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>amplitude</code></td>
+<td style="border:1px solid #999;padding:5px 9px">–</td>
+<td style="border:1px solid #999;padding:5px 9px">the B2/B1 envelope ratio, i.e. how much of the echo survives the trip through the part. Dividing by B1 is deliberate: B1 never leaves the printhead, so the ratio cancels drifts in transducer coupling or pulse energy and leaves attenuation.</td></tr>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>RMS_Energy</code></td>
+<td style="border:1px solid #999;padding:5px 9px">a.u.</td>
+<td style="border:1px solid #999;padding:5px 9px">root-mean-square amplitude of the B2 window — the total energy coming back, without normalising by B1.</td></tr>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>Center_Freq</code></td>
+<td style="border:1px solid #999;padding:5px 9px">Hz</td>
+<td style="border:1px solid #999;padding:5px 9px">the spectral centroid of the echo (2–30 MHz band). Cured polymer absorbs high frequencies more strongly than low ones, so the centroid moves as the material changes.</td></tr>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>Bandwidth</code></td>
+<td style="border:1px solid #999;padding:5px 9px">Hz</td>
+<td style="border:1px solid #999;padding:5px 9px">the spectral spread about that centroid — how much the pulse has been broadened and reshaped on its way through the part.</td></tr>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>Wavelet_Energy_L0</code> … <code>L3</code></td>
+<td style="border:1px solid #999;padding:5px 9px">a.u.</td>
+<td style="border:1px solid #999;padding:5px 9px">energy in four wavelet decomposition bands. Unlike the FFT-based pair above, a wavelet split keeps <em>where in the burst</em> the energy sits, so these four capture changes in the echo's shape that a single centroid would average away.</td></tr>
+</tbody>
+</table>
 
 **Within-layer features** — computed from **all six frames** of the same, frozen
 window, and therefore immune to geometry:
 
-| feature | unit | what it measures |
-|---|---|---|
-| `frame_diff_rms` | a.u. | root-mean-square of the frame-to-frame differences: how much the echo moves from one 3 s snapshot to the next while the light is on. |
-| `within_layer_std` | a.u. | the per-sample standard deviation across the six frames, averaged over the window: the same idea, measured as spread instead of as step-to-step change. |
+<table style="border-collapse:collapse">
+<thead><tr>
+<th style="border:1px solid #999;padding:5px 9px;text-align:left">feature</th>
+<th style="border:1px solid #999;padding:5px 9px;text-align:left">unit</th>
+<th style="border:1px solid #999;padding:5px 9px;text-align:left">what it measures</th>
+</tr></thead>
+<tbody>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>frame_diff_rms</code></td>
+<td style="border:1px solid #999;padding:5px 9px">a.u.</td>
+<td style="border:1px solid #999;padding:5px 9px">root-mean-square of the frame-to-frame differences: how much the echo moves from one 3 s snapshot to the next while the light is on.</td></tr>
+<tr><td style="border:1px solid #999;padding:5px 9px"><code>within_layer_std</code></td>
+<td style="border:1px solid #999;padding:5px 9px">a.u.</td>
+<td style="border:1px solid #999;padding:5px 9px">the per-sample standard deviation across the six frames, averaged over the window: the same idea, measured as spread instead of as step-to-step change.</td></tr>
+</tbody>
+</table>
 
 ---
 
@@ -910,81 +940,44 @@ plt.suptitle("Layer-wise features for the two intensities — before any ML")
 plt.tight_layout(); plt.show()
 """),
 ("md", """\
-**Read the four panels like a physicist** — and notice where the physics is
-clear and where it is not:
+**Reading the four panels:**
 
-- *ToF* rises in both prints, because the path keeps growing. It rises more
+- *ToF* rises in both prints, because the path keeps growing, and it rises more
   slowly for I7 (about 0.057 versus 0.074 µs per layer): the strongly cured
-  material carries sound faster, so each added layer costs less time. This is
-  the cleanest, most reliable signal we have.
+  material carries sound faster. This is the cleanest signal we have.
 - *Amplitude ratio* falls in both prints, and over the first ten layers it
-  falls much faster for I7 — the more crosslinked network attenuates more.
-  Look closely at I7 around layer 11, though: the ratio jumps back up instead
-  of continuing down. That discontinuity is almost certainly the echo tracker
-  latching onto a neighbouring peak in a weak signal, not a material effect.
-  Treat it as a reminder that every feature inherits the tracker's mistakes.
-- *Center frequency* drifts downward in both prints but along clearly different
-  paths; I7 starts higher and ends lower. The two prints are distinguishable
-  here, but not by a simple "one is always above the other" rule.
-- *Within-layer RMS* does **not** separate the two prints cleanly at this
-  scale. Both sit in the same few-hundred-count range, and I7 shows an isolated
-  spike around layer 4. From this pair of prints alone you should conclude
-  nothing about how within-layer motion depends on exposure — which is exactly
-  why the next section looks at all 50 prints, and why Notebook 3 refuses to
-  trust any of these impressions without a leak-free test.
+  falls much faster for I7 — more crosslinking, more attenuation. The jump back
+  up around layer 11 is almost certainly the tracker latching onto a
+  neighbouring peak in a weak signal, a reminder that every feature inherits
+  the tracker's mistakes.
+- *Center frequency* and *within-layer RMS* have no clear physical reading
+  here. The curves differ, but not in a way this pair of prints lets you
+  attribute to a cause.
 
-## 3. Where the dataset's features actually live
+## 3. Where the dataset's features live
 
-Everything so far was recomputed, in front of you, from three sample prints.
-The rest of the series does not work that way: Notebooks 3 and 4 use the
-**paper's own feature table**, covering all 50 printed cylinders, exactly as it
-was produced by the published extraction pipeline. It is worth knowing precisely
-what that file is before we start modelling with it.
+Everything so far was recomputed in front of you from three sample prints.
+Notebooks 3 and 4 instead use the paper's own tables, covering all 50 printed
+cylinders:
 
-**`data/feature11.csv` — the feature table.** One row per printed sample, 50
-rows in total. Its columns are:
-
-- `layer` — how many layers that cylinder has (10, 15, 20, 25 or 30);
-- `intensity` — the exposure intensity, stored as **percent of maximum lamp
-  power**, so 10 = I1 = 10.70 mW/cm² and 70 = I7 = 20.16 mW/cm²;
-- `Layer_{i}_{feature}` for i = 1…30 and the 11 features listed in section 2 —
-  **330 columns**, holding the whole layer-by-layer history of the print;
-- a copy of the three labels, for convenience.
-
-The layer block is a fixed-width slot system: 30 slots regardless of how many
-layers the print actually has. A 15-layer cylinder fills slots 1–15 and leaves
-slots 16–30 at **zero**. That zero padding is what lets 50 prints of five
-different heights live in one rectangular table and be fed to one network — and
-it is also a trap: any statistic you compute over all 30 slots (a mean, a slope)
-must be restricted to the print's real layers, or the padding will drag it
-toward zero. You will see that guard written explicitly in `part_scale_stats()`
-and again in Notebook 4.
-
-**`data/condition_labels.csv` — the ground truth.** The same 50 rows in the same
-order, with the three measured properties: `thickness` in mm from a Keyence
-laser profilometer, `modulus` in Pa from a rheometer, and `DoC` (dimensionless,
-0–1) from Raman spectroscopy. These come from offline, largely destructive
-measurements made *after* printing — the very measurements the ultrasonic
-sensor is meant to replace. This file is the authoritative copy of the labels,
-and it is the one Notebook 3 merges in.
-
-Both files are derived data. The raw waveforms behind them — every layer of all
-50 prints, at 6 frames and 62,509 points each — are hundreds of megabytes and
-stay in the authors' archive; `DATA_CARD.md` documents the provenance, and the
-three `.npz` files you have been using are a small, read-only excerpt of it.
+- **`data/feature11.csv`** — 50 rows, one per print. Columns: `layer` (10–30),
+  `intensity` (percent of lamp power, 10 = I1 … 100 = I10), and
+  `Layer_{i}_{feature}` for i = 1…30 and the 11 features above, i.e. **330
+  columns**. The 30 slots are fixed width, so a 15-layer print fills slots 1–15
+  and leaves the rest at **zero**; any statistic over the slots must therefore
+  be restricted to a print's real layers.
+- **`data/condition_labels.csv`** — the same 50 rows in the same order, with
+  the measured `thickness` (mm, Keyence), `modulus` (Pa, rheometer) and `DoC`
+  (–, Raman).
 
 ---
 
 **Input** — `data/feature11.csv`.
 
-**What this cell does** — loads the table and inspects its structure: overall
-shape, the list of features stored per layer slot, and one concrete print's ToF
-sequence showing where the real layers stop and the zero padding begins. This is
-an inspection, not a validation — we are looking at the file we are about to
-model with.
+**What this cell does** — loads the table and prints its shape, the features
+stored per layer slot, and one print's padding.
 
-**Output** — the printed structure, and `df`, the table used by the heatmaps in
-section 4 and by both remaining notebooks.
+**Output** — `df`, used by the heatmaps below and by both remaining notebooks.
 """),
 ("code", """\
 import re
@@ -1012,39 +1005,21 @@ print("   slots 14-17:", [round(float(row[f"Layer_{i}_ToF"]), 3) for i in (14, 1
 ("md", """\
 ## 4. The whole design grid at a glance — feature heatmaps
 
-Now use the full 50-sample table: layer × intensity heatmaps for one layer-count
-group (the paper's Fig. 9/11 style). This is the honest way to ask the question
-the previous section could not answer — does a feature respond to exposure
-*across the whole design*, or did we read a trend into two prints?
+Now the full 50-sample table, so the same question can be asked of the whole
+design instead of one pair of prints: does a feature respond to exposure?
 
 ---
 
-**Input** — the complete `feature11.csv` table (`df`), not just our three
-prints. We use the **30-layer group**: 10 prints, one per intensity I1…I10, each
-with 30 filled layer slots.
+**Input** — the **30-layer group** of `df`: 10 prints, one per intensity.
 
-**What this cell does** — for a chosen feature, gathers the 10 rows into a
-matrix of shape (30 layers × 10 intensities) and draws it as an image: vertical
-axis = depth into the print, horizontal axis = light dose.
+**What this cell does** — arranges each feature into a (30 layers × 10
+intensities) matrix, draws it as an image (vertical = depth, horizontal =
+dose), and prints the column averages behind the colours.
 
-**Output** — three heatmaps, and a printed column-average per intensity so the
-trends can be checked as numbers instead of as colours. What they show:
-
-- **ToF** has a strong, obvious gradient *down* the image — the part growing.
-  Geometry dominates this feature completely.
-- **Amplitude ratio** also varies mostly with depth. Its averages across
-  I1→I10 move around (roughly 0.6 → 1.2 → 1.0) without a clean monotonic dose
-  trend, so the "more dose → more attenuation" pattern we saw in the I1/I7 pair
-  does **not** simply extend across the whole design.
-- **Within-layer RMS** is close to flat across exposure: the intensity-averaged
-  values sit within a few percent of each other. Whatever cure information it
-  carries is not a simple one-dimensional response to lamp power.
-
-This is a genuinely useful negative result, and it sets up the rest of the
-series. No single feature reads out the process state on its own. The paper's
-answer is not a better feature but a **model over many features at once**, held
-to an evaluation protocol that cannot reward wishful reading — which is exactly
-what Notebook 3 builds.
+**Output** — three heatmaps and their numbers. ToF has a strong depth gradient;
+the other two show no clean trend with exposure. No single feature reads out
+the process state on its own — which is why Notebook 3 builds a model over all
+of them at once.
 """),
 ("code", """\
 def heat(ax, base, group_layers, title, cmap="viridis"):
@@ -1078,18 +1053,6 @@ for base in BASES_SHOWN:
     print(f"  {base:15s}", np.round(M.mean(axis=1), 3))
 """),
 ("md", """\
-## Exercises
-
-1. Recreate the heatmaps for the 10-layer group. Does within-layer RMS depend
-   on exposure there in any consistent way? Compare with the 30-layer group and
-   state what evidence would convince you either way.
-2. `layer_features_explicit` uses the **last** frame of each layer for the
-   across-layer features. Re-run section 2 using the *reference* frame
-   (index 0) instead. Which features change most, and why?
-3. Design ONE new feature you believe tracks curing but not geometry. Compute
-   it for I1 vs I7 and defend your design in two sentences. *(You will test it
-   properly — leak-free — after Notebook 3.)*
-
 **Next notebook:** we assemble the 344-dimensional representation and learn —
 without fooling ourselves.
 """),
