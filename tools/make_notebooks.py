@@ -8,6 +8,11 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 NBDIR = os.path.join(ROOT, "notebooks")
 os.makedirs(NBDIR, exist_ok=True)
 
+# Figures shown in markdown cells use absolute raw-GitHub URLs on purpose: the
+# notebooks live in notebooks/, so a relative "figs/..." path would resolve to
+# notebooks/figs/... , and on Colab a GitHub-opened notebook has no local
+# filesystem context at all, so relative paths never render.
+
 BOOT = '''\
 # --- Setup (works both locally and on Google Colab) ---------------------------
 # On Colab the notebook starts in an empty machine, so we first download
@@ -98,7 +103,7 @@ turns the printer into its own sensor. In this notebook you will:
 3. watch the part grow — literally — through waveform animations;
 4. extract your first physical measurement: the **time of flight (ToF)**.
 
-![system](figs/system_overview.png)
+![system](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/system_overview.png)
 *The DLP-IUM platform: the Rexolite printhead doubles as the transducer's delay
 line, so the part is monitored continuously without interrupting printing.*
 """),
@@ -525,7 +530,7 @@ Raw waveforms have 62,509 points; we have only 50 printed samples. Learning
 end-to-end from raw signals is hopeless at this scale (the paper proves it —
 Case 1 fails). Instead, the paper *designs* features on a physical map:
 
-![two-scale](figs/two_scale_framework.png)
+![two-scale](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/two_scale_framework.png)
 
 - **Across layers**: each layer lengthens the acoustic path *and* stiffens the
   material → ToF, amplitude ratio, spectral features encode geometry + material
