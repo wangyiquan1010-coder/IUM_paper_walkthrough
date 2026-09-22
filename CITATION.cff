@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+title: "IUM paper walkthrough: Colab notebooks reproducing in-situ ultrasonic monitoring of vat photopolymerization"
+message: "If you use this material, please cite the article below."
+type: software
+authors:
+  - family-names: Wang
+    given-names: Yiquan
+    affiliation: "ZIP-AM Laboratory, University of Pittsburgh"
+repository-code: "https://github.com/wangyiquan1010-coder/IUM_paper_walkthrough"
+abstract: >-
+  A four-notebook reproduction and walkthrough of Wang & Zhao (2026),
+  Additive Manufacturing 105300. The notebooks go from raw ultrasonic A-scans
+  recorded during printing to physics-informed features, a three-branch
+  attention-fusion network, and its interpretation, evaluated leave-one-
+  intensity-out. The implementation is a simplified re-implementation written
+  for teaching; the article is the authoritative description of the method.
+keywords:
+  - vat photopolymerization
+  - additive manufacturing
+  - in-situ monitoring
+  - ultrasound
+  - machine learning
+  - process monitoring
+license: MIT
+preferred-citation:
+  type: article
+  title: "Machine learning-aided in-situ ultrasonic characterization for multi-parametric monitoring of vat photopolymerization"
+  authors:
+    - family-names: Wang
+      given-names: Yiquan
+      affiliation: "ZIP-AM Laboratory, University of Pittsburgh"
+    - family-names: Zhao
+      given-names: Xiayun
+      affiliation: "ZIP-AM Laboratory, University of Pittsburgh"
+  journal: "Additive Manufacturing"
+  year: 2026
+  volume: "105300"
+  doi: "10.1016/j.addma.2026.105300"

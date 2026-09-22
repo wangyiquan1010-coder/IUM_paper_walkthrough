@@ -46,6 +46,28 @@ the size of Colab's free runtime, left the training time unchanged (19.5 s) and
 added about four seconds to Notebook 4, so the free tier should be comfortable —
 though we have not timed it on Colab itself.
 
+## What this code is, and what it is not
+
+**This is a simplified re-implementation written for teaching, not the
+production code behind the paper.** `src/ium_utils.py` and the notebooks were
+rewritten from scratch to be readable in one sitting: the echo tracker, the
+feature definitions and the training loop follow the ideas of the published
+method but not its engineering, and several steps are deliberately shorter than
+their counterparts in the original pipeline.
+
+Two consequences worth knowing before you build on it:
+
+- **The numerical constants are calibrated for one apparatus.** The B1 search
+  window, the per-layer cap on how far B2 may advance, the width of the analysis
+  window around the echo and the wavelet basis and level were all chosen for the
+  geometry of this printhead, this delay line and this 2.5 GHz acquisition. On a
+  different rig they would have to be re-derived; copying them across is not
+  meaningful.
+- **The article is the authoritative description of the method.** Where this
+  repository and the paper differ, the paper is correct. Results here are close
+  to the published ones but not identical, and the notebooks say so at each
+  point where it matters.
+
 ## Repository layout
 
 ```
@@ -79,7 +101,22 @@ gives LOIO R² ≈ 0.98 / 0.80 / 0.72 against the paper's 0.985 / 0.832 / 0.757.
 Numbers shift slightly with hardware and seed, and the notebooks say so where it
 matters.
 
-## License & citation
+## Licence & citation
 
-Data and figures © the authors, provided for teaching use with attribution.
-If you use this material, cite the paper above.
+Three different terms apply, because three different kinds of material are here:
+
+| what | licence | file |
+|---|---|---|
+| source code (`src/`, `tools/`, the code in the notebooks) | MIT | `LICENSE` |
+| data (`data/`) | CC BY-NC 4.0 | `LICENSE-DATA` |
+| figures reproduced from the article (`figs/`) | not granted here — publisher's permissions apply | `LICENSE-DATA` |
+
+If you use any of this material, please cite the article:
+
+> Wang, Y., & Zhao, X. (2026). *Machine learning–aided in-situ ultrasonic
+> characterization for multi-parametric monitoring of vat photopolymerization.*
+> **Additive Manufacturing**, 105300.
+> https://doi.org/10.1016/j.addma.2026.105300
+
+`CITATION.cff` carries the same citation in machine-readable form, so GitHub's
+"Cite this repository" button gives it to you directly.

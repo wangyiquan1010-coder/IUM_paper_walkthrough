@@ -1,0 +1,40 @@
+# Licence for the data in this repository
+
+## What this covers
+
+Everything in `data/`:
+
+- `feature11.csv` — the layer-wise feature table for the 50 printed samples
+- `condition_labels.csv` — the measured thickness, storage modulus and degree
+  of conversion for the same 50 samples
+- `waveforms_15L_I1.npz`, `waveforms_15L_I7.npz`, `waveforms_30L_I7.npz` —
+  raw ultrasonic A-scans for three representative prints
+
+## Licence
+
+These files are released under **Creative Commons Attribution-NonCommercial 4.0
+International (CC BY-NC 4.0)**.
+
+- Summary: https://creativecommons.org/licenses/by-nc/4.0/
+- Full legal text: https://creativecommons.org/licenses/by-nc/4.0/legalcode
+
+You may share and adapt the data for non-commercial purposes, provided you give
+appropriate credit. Credit means citing the source publication:
+
+> Wang, Y., & Zhao, X. (2026). Machine learning–aided in-situ ultrasonic
+> characterization for multi-parametric monitoring of vat photopolymerization.
+> *Additive Manufacturing*, 105300.
+> https://doi.org/10.1016/j.addma.2026.105300
+
+If you publish work that uses these data, please cite that article.
+
+## What this does NOT cover
+
+**Figures in `figs/`.** `system_overview.png`, `two_scale_framework.png` and
+`model_architecture.png` are reproduced from the published article. Copyright in
+them rests with the authors and the publisher under the publishing agreement,
+and they are included here for educational use only. They are **not** granted
+under CC BY-NC by this file; to reuse them, follow the publisher's permissions
+process.
+
+**Source code**, which is under the MIT licence — see `LICENSE`.
