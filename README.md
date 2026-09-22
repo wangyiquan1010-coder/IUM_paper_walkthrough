@@ -1,6 +1,7 @@
 # Listening to a Part Being Born — Ultrasonic Monitoring of 3D Printing, Hands-On
 
-A four-notebook teaching series (graduate level) built on the dataset and code of:
+A four-notebook reproduction and walkthrough (graduate level) of the dataset and
+code behind:
 
 > Wang, Y., & Zhao, X. (2026). *Machine learning–aided in-situ ultrasonic
 > characterization for multi-parametric monitoring of vat photopolymerization.*
@@ -64,8 +65,8 @@ by hand.
 
 ## For instructors
 
-The series is designed for two 75-minute sessions (NB1–2, NB3–4). Notebook 3 is
-the one to run ahead of class if you want its training output ready.
+Run Notebook 3 ahead of class. It trains on all ten folds and is the only one
+that takes more than a minute; the other three are effectively instant.
 
 Results are reproduced, not quoted: the classroom budget (60 epochs, one seed)
 gives LOIO R² ≈ 0.98 / 0.80 / 0.72 against the paper's 0.985 / 0.832 / 0.757.
