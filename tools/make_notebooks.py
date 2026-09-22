@@ -1383,37 +1383,99 @@ seq_cols = iu.seq_columns(full)        # the 330 Layer_{i}_{feature} columns
 ("md", """\
 ## 1. What do the attention gates say?
 
-Train on one LOIO fold and read the sigmoid gates of the fusion layer.
-Gate positions 0–31 = part-scale stats branch, 32–159 = layer-wise branch,
-160–175 = printing-condition branch.
+Nothing in this section is copied from the paper. We train a network here, run
+it, and read the gate values it actually produces — so the numbers you get are
+yours, and they will shift a little with the seed and the hardware.
+
+**Where the gates come from.** The attention gate is four lines of arithmetic
+sitting between the branches and the prediction head:
+
+1. each branch turns its input group into a fixed-length vector — part-scale
+   statistics → 32 numbers, layer-wise sequence → 128, printing conditions → 16;
+2. those are concatenated into one **fusion vector** `x` of length
+   32 + 128 + 16 = **176**. This ordering is what makes channels 0–31 "the
+   stats branch", 32–159 "the layer-wise branch" and 160–175 "the conditions
+   branch";
+3. the gate is a small network applied to `x` itself:
+   **gate = sigmoid( W₂ · ReLU( W₁ · x ) )**, with `W₁` mapping 176 → 88 and
+   `W₂` mapping 88 → 176. The sigmoid forces every one of the 176 outputs into
+   (0, 1), so the gate is one weight per channel;
+4. the head never sees `x`. It sees **x ⊙ gate**, the fusion vector with each
+   channel scaled by its weight.
+
+So a channel with a gate near 1 passes through intact, and one near 0 is
+suppressed. Because the gate is computed *from* `x`, it is recomputed for every
+sample — the network can weigh its sources differently for different prints.
+Reading those weights back is what tells us which branch the model leans on.
 
 ---
 
-**Input** — `full`, split by `iu.loio_folds()`; we take fold index 4, i.e. a
-**mid-range** exposure intensity is held out (edge folds are harder — exercise 1
-asks you to try one).
+**Input** — `full`, split by `iu.loio_folds()`; we take fold index 4, so a
+**mid-range** exposure intensity is held out.
 
-**What this cell does** — trains one network for that fold, then calls
-`iu.predict(..., return_attn=True)` to retrieve not just the predictions but the
-**gate vector** the attention layer applied to each test sample. The three
-branch outputs are concatenated in a fixed order before gating — stats (32
-dimensions) + layer-wise sequence (128) + process conditions (16) = 176 — which
-is where the segment boundaries 0–32–160–176 come from.
+**What this cell does** — trains one network for that fold, then runs the
+forward pass **by hand**, step by step, instead of calling the library: the
+three branches, the concatenation, the sigmoid gate, and the gated vector going
+into the head. It then checks the by-hand gates against `iu.predict(...,
+return_attn=True)` so you can see the two agree.
 
-**Output** — a heatmap of all 176 gate values for each held-out print, plus a
-bar chart of the per-branch means: a direct, quantitative answer to *"does the
-ultrasound contribute more than the nominal recipe?"*
+**Output** — `gates`, an array of (test prints × 176) weights, and the printed
+shape check.
 """),
 ("code", """\
+import torch
+
 iu.set_seed(42)
 folds = list(iu.loio_folds(full))
 tr_df, te_df, inten = folds[4]              # hold out a mid-range intensity
 a_tr, a_te, sc_y = iu.assemble_arrays(tr_df, te_df)
 net = iu.train_model(a_tr, epochs=60)
-# return_attn=True also gives the per-sample sigmoid gate vector (0...1 each).
-yp, gates = iu.predict(net, a_te, sc_y, return_attn=True)
-print("gates shape (test samples × fusion dims):", gates.shape)
 
+# ---------------------------------------------------------------------------
+# The forward pass, written out. Everything below is also what net(...) does
+# internally; we spell it out so the gates are not a black box.
+# ---------------------------------------------------------------------------
+net.eval()
+dev = next(net.parameters()).device
+stats = torch.tensor(a_te["stats"]).to(dev)      # (n, 12)  part-scale statistics
+seq = torch.tensor(a_te["seq"]).to(dev)          # (n, 30, 11) layer-wise features
+proc = torch.tensor(a_te["proc"]).to(dev)        # (n, 2)   layer count, intensity
+
+with torch.no_grad():
+    # 1. each branch compresses its input group into a fixed-length vector
+    a = net.mlp_s(stats)                                  # -> (n, 32)
+    z = net.cnn(seq.permute(0, 2, 1)).permute(0, 2, 1)    # Conv1d across layers
+    z, _ = net.lstm(z)                                    # Bi-LSTM across layers
+    b = z.max(1).values                                   # max over layers (n, 128)
+    c = net.mlp_p(proc)                                   # -> (n, 16)
+
+    # 2. concatenate, in this fixed order -> the fusion vector
+    x = torch.cat([a, b, c], dim=1)                       # (n, 176)
+
+    # 3. the gate: sigmoid(W2 @ ReLU(W1 @ x)), one weight in (0,1) per channel.
+    #    net.fuse.f is exactly that two-layer MLP, 176 -> 88 -> 176.
+    gate = torch.sigmoid(net.fuse.f(x))                   # (n, 176)
+
+    # 4. the prediction head sees the GATED vector, not x itself
+    y_scaled = net.head(x * gate)                         # (n, 3), standardised
+
+gates = gate.cpu().numpy()
+print("fusion vector:", tuple(x.shape), "  gates:", gates.shape)
+
+# Cross-check: the library's shortcut must give the same gates.
+yp, gates_lib = iu.predict(net, a_te, sc_y, return_attn=True)
+print("by-hand gates match iu.predict:", np.allclose(gates, gates_lib, atol=1e-5))
+"""),
+("md", """\
+**Input** — the `gates` array computed above, plus the branch layout.
+
+**What this cell does** — shows every gate value as a heatmap (one row per
+held-out print, one column per channel), and averages the gates inside each
+branch to compare the three sources.
+
+**Output** — the figure and the per-branch percentages.
+"""),
+("code", """\
 # The fusion vector is the concatenation of the three branch outputs, in this
 # fixed order — hence these index ranges.
 seg = dict(stats=(0, 32), layerwise=(32, 160), process=(160, 176))
@@ -1438,17 +1500,19 @@ plt.tight_layout(); plt.show()
 print({k: f"{v/tot:.1%}" for k, v in means.items()})
 """),
 ("md", """\
-In the paper (Fig. 16), the two **IUM-derived branches together carry ≈57%** of
-the fusion contribution — more than the nominal printing conditions. That is
-the quantitative answer to *"does sensing add information beyond the recipe?"*
+Read the bar chart as the answer to *"does sensing add anything beyond the
+recipe?"* — the two ultrasound-derived branches (stats + layer-wise) against
+the printing conditions the operator already knows.
 
-> Caveat you should teach: sigmoid gates are per-element, not a softmax — these
-> percentages are a relative ranking, not probability mass.
+> Two honest caveats. First, sigmoid gates are per-channel, not a softmax, so
+> they do not sum to anything: turning them into percentages gives a *relative
+> ranking*, not shares of a fixed budget. Second, this is one fold and one
+> training run; re-run it with a different seed or a different held-out
+> intensity and the split moves.
 
 ## 2. Feature importance, target by target
 
-A gradient-boosting surrogate gives fast per-target rankings (the paper's
-Fig. 17 uses XGBoost; sklearn's HistGradientBoosting behaves similarly).
+A gradient-boosting surrogate gives fast per-target rankings.
 
 ---
 
@@ -1639,16 +1703,6 @@ A validated, fast, interpretable estimate of DoC and thickness **per layer** is
 exactly a feedback signal. The authors' ongoing work uses this sensor family
 with grayscale exposure as the actuator to close the control loop on the same
 printer — toward autonomous, defect-free photopolymer additive manufacturing.
-
-## Exercises
-
-1. In section 1, hold out an *edge* intensity (fold 0 or 9) instead of a
-   mid-range one. How do the gates and the errors change, and why?
-2. The dashboard uses out-of-fold predictions. Explain, in three sentences,
-   why re-using a model trained on *all* data would overstate the sensor.
-3. **Mini-capstone:** take your feature from Notebook 2's exercise 3, add it to
-   `X_all`, and report the LOIO ΔR² per target with error bars over 5 seeds.
-   Does it beat the recipe?
 
 ---
 *Citation: Wang, Y., & Zhao, X. (2026). Machine learning-aided in-situ
