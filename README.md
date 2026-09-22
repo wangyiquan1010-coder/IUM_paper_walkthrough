@@ -36,9 +36,13 @@ Open in Colab:
 - [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_paper_walkthrough/blob/main/notebooks/04_interpretation_and_deployment.ipynb) Notebook 4
 
 Everything (code + 12 MB of data) ships in this repository — no extra downloads.
-Notebooks 1, 2 and 4 run in well under a minute each. Notebook 3 trains the
-network on all ten folds: ~4 min on a Colab GPU (Runtime → Change runtime type
-→ T4 GPU), or ~20–30 min on CPU with the default classroom settings.
+All four run end to end in under a minute on a laptop. Timed twice with
+`nbconvert --execute`, they took 24–27 s, 18–21 s, 43–50 s and 37–41 s
+respectively. Notebook 3 trains the
+network on all ten folds, and the model is small enough that a GPU buys little:
+its training loop takes 20 s on CPU against 14 s on CUDA on the same machine, so
+the default Colab runtime is fine. Colab's free CPU has fewer cores than a
+laptop, so expect somewhat longer there; we have not timed it on Colab itself.
 
 ## Repository layout
 
@@ -65,8 +69,8 @@ by hand.
 
 ## For instructors
 
-Run Notebook 3 ahead of class. It trains on all ten folds and is the only one
-that takes more than a minute; the other three are effectively instant.
+Notebook 3 is the one to try first: it trains on all ten folds and is the only
+one whose runtime depends on the machine you give it.
 
 Results are reproduced, not quoted: the classroom budget (60 epochs, one seed)
 gives LOIO R² ≈ 0.98 / 0.80 / 0.72 against the paper's 0.985 / 0.832 / 0.757.

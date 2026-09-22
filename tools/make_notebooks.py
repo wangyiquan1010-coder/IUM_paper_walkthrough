@@ -1257,8 +1257,10 @@ inside `iu.predict`) and stores them. Afterwards it aggregates all 50
 out-of-fold predictions into one honest score table.
 
 **Output** — per-fold RMSE printed live (in mm, Pa and DoC units), and `agg`:
-the aggregate RMSE and R² over all 50 out-of-fold predictions. On a Colab GPU
-this takes ~4 minutes; on CPU roughly 20–30.
+the aggregate RMSE and R² over all 50 out-of-fold predictions. Training all ten
+folds took 20 s on CPU and 14 s on GPU on the machine this notebook was prepared
+on: the network is small and the dataset is 50 samples, so a GPU is not worth
+switching runtimes for. A slower machine will take longer, but not minutes.
 
 > Classroom budget: 60 epochs, single seed. The paper uses 100 epochs × 5 seeds,
 > so expect numbers that are close but slightly lower — and a little different
@@ -1266,8 +1268,9 @@ this takes ~4 minutes; on CPU roughly 20–30.
 """),
 ("code", """\
 import torch
-print("device:", "cuda" if torch.cuda.is_available() else "cpu",
-      " (Colab: Runtime → Change runtime type → GPU makes this ~5× faster)")
+# A GPU is optional here: the network is small and the dataset is 50 samples,
+# so the training loop below takes ~20 s on CPU against ~14 s on CUDA.
+print("device:", "cuda" if torch.cuda.is_available() else "cpu")
 
 EPOCHS = 60      # classroom budget; the paper uses 100 epochs × 5 seeds
 iu.set_seed(42)  # make this run reproducible (python, numpy and torch RNGs)
