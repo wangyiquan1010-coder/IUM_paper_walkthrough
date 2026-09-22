@@ -41,8 +41,10 @@ All four run end to end in under a minute on a laptop. Timed twice with
 respectively. Notebook 3 trains the
 network on all ten folds, and the model is small enough that a GPU buys little:
 its training loop takes 20 s on CPU against 14 s on CUDA on the same machine, so
-the default Colab runtime is fine. Colab's free CPU has fewer cores than a
-laptop, so expect somewhat longer there; we have not timed it on Colab itself.
+the default Colab runtime is fine. Restricting the same machine to two cores,
+the size of Colab's free runtime, left the training time unchanged (19.5 s) and
+added about four seconds to Notebook 4, so the free tier should be comfortable —
+though we have not timed it on Colab itself.
 
 ## Repository layout
 
