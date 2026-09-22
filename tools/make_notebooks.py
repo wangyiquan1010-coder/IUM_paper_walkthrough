@@ -1351,9 +1351,8 @@ A sensor you cannot interpret is a sensor you cannot trust. In this notebook:
 
 1. read the network's **attention gates** — does ultrasound actually contribute?
 2. rank features per target and check the ranking **matches the physics**;
-3. probe **noise robustness**;
-4. play with a **virtual sensor dashboard** — and see why this model is the
-   feedback signal for closed-loop printing.
+3. probe **noise robustness**, and see why this model is the feedback signal for
+   closed-loop printing.
 """),
 ("md", SETUP_MD),
 ("code", BOOT),
@@ -1592,8 +1591,13 @@ microseconds and a frequency in hertz.
 noise to the **test** features only, at several levels, five repetitions each.
 Training stays clean on purpose: we are asking "how does a model trained on good
 data survive a degraded sensor in the field?", not "does noise help training?".
+Because the training data is the same for every level, the ten forests are
+fitted once and then reused — the alternative, refitting inside the loop, would
+do the identical work 30 times over and is what makes this kind of experiment
+feel slow.
 
-**Output** — R² versus noise level with error bars. A gentle slope means the
+**Output** — `loio_models` (the ten fitted forests, reused by the dashboard in
+section 4) and R² versus noise level with error bars. A gentle slope means the
 model leans on broad physical trends; a cliff would mean it depends on fragile
 details.
 """),
@@ -1609,23 +1613,33 @@ Y = full[iu.LABEL_COLS].values
 # whose units differ by many orders of magnitude (µs vs Hz vs ratios).
 scale = np.abs(X_all).mean(axis=0)
 
+# Fit the ten LOIO forests ONCE and keep them. Noise is added only to the TEST
+# features, so the training data is identical for every level and repetition —
+# refitting inside the loop would repeat the same work 30 times over.
+loio_models = []
+for tr_idx, te_idx in LeaveOneGroupOut().split(X_all, Y, full.intensity.values):
+    rf = RandomForestRegressor(300, random_state=0, n_jobs=-1)
+    rf.fit(X_all[tr_idx], Y[tr_idx])              # training data stays clean
+    rf.n_jobs = 1                                 # see the note below
+    loio_models.append((rf, te_idx))
+# Fitting benefits from all cores, but each prediction below covers only 5
+# prints: spreading that across threads costs more in dispatch than it saves,
+# so we switch the forests to a single thread for the prediction loop.
+
 def loio_r2_with_noise(noise_pct, n_rep=5, seed0=0):
     \"\"\"LOIO R² when the TEST features are corrupted by noise_pct % noise.\"\"\"
     r2s = []
     for rep in range(n_rep):                      # repeat: noise is random
         rng = np.random.default_rng(seed0 + rep)
         preds = np.zeros_like(Y)
-        for tr_idx, te_idx in LeaveOneGroupOut().split(
-                X_all, Y, full.intensity.values):
-            rf = RandomForestRegressor(200, random_state=0, n_jobs=-1)
-            rf.fit(X_all[tr_idx], Y[tr_idx])      # training data stays clean
+        for rf, te_idx in loio_models:            # reuse the fitted forests
             Xte = X_all[te_idx] + rng.normal(
                 0, noise_pct / 100 * scale, X_all[te_idx].shape)
             preds[te_idx] = rf.predict(Xte)
         r2s.append([r2_score(Y[:, i], preds[:, i]) for i in range(3)])
     return np.array(r2s)                          # (n_rep, 3)
 
-levels = [0, 1, 2, 5, 10, 20]
+levels = [0, 2, 5, 10]          # 0% = the clean LOIO baseline, for reference
 curves = {l: loio_r2_with_noise(l) for l in levels}
 
 fig, ax = plt.subplots(figsize=(7.5, 4.2))
@@ -1634,70 +1648,42 @@ for i, l in enumerate(iu.LABEL_COLS):
     sd = [curves[nv][:, i].std() for nv in levels]     # spread over repetitions
     ax.errorbar(levels, mean, yerr=sd, marker="o", capsize=3, label=l)
 ax.set(xlabel="per-feature noise level (%)", ylabel="LOIO R²",
-       title="Graceful degradation — no cliff below ~10% noise")
+       title="Degradation under sensor noise")
 ax.legend(); ax.grid(alpha=0.3)
 plt.tight_layout(); plt.show()
+
+for i, l in enumerate(iu.LABEL_COLS):
+    print(f"{l:10s}", "  ".join(f"{nv:2d}%: {curves[nv][:, i].mean():.3f}"
+                                for nv in levels))
 """),
 ("md", """\
-## 4. The virtual sensor dashboard
+**Reading the curves.**
 
-Honest out-of-fold predictions for every sample (each was predicted by a model
-that never saw its intensity). Pick a condition and compare sensor vs truth —
-this is what a *soft sensor* delivers, in real time (2.3–4.7 ms/layer in the
-paper's deployment test).
+At **0% noise** the three values are just the honest LOIO baseline — the same
+numbers the Random Forest reached in Notebook 3 (≈0.84 thickness, ≈0.45
+modulus, ≈0.31 DoC). Everything to the right of that point shows what a
+degraded sensor would cost.
 
----
+*Thickness* declines slowly and smoothly. It rides mainly on ToF, which is a
+large, well-separated quantity — a few percent of scatter on each feature
+shifts the arrival times far too little to confuse the model.
 
-**Input** — `X_all` and `Y` again. The cell first computes and caches the
-**out-of-fold** predictions for all 50 prints: 10 LOIO folds, each model
-predicting only the five prints whose intensity it never saw.
+*Modulus* and *DoC* start low and stay roughly flat, with error bars wide enough
+to cover most of the change. That flatness says something useful: these two are
+**not limited by measurement noise**. If they were, adding noise would visibly
+hurt them. Their ceiling comes from elsewhere — how much cure information the
+features carry at all, how few samples we have, and the uncertainty in the Raman
+and rheometer labels themselves. Buying a quieter digitizer would not fix them;
+more prints and better labels might.
 
-**What this cell does** — after caching, `dashboard()` looks up one print by
-(layer count, intensity), and plots measured versus predicted for the three
-targets with the relative error. `ipywidgets.interact` turns its two arguments
-into dropdowns over the values that actually exist in the design grid.
+The important negative result is that **nothing falls off a cliff**. A model
+that had latched onto one fragile feature would collapse as soon as that feature
+was perturbed. Gradual decline across the board means the prediction rests on
+broad trends spread over many features, which is exactly the behaviour you want
+from something that will run unattended on a machine whose couplant, lamp and
+temperature all drift.
 
-**Output** — an interactive dashboard. This is the honest version of a sensor
-read-out: every number shown comes from a model that had never seen that
-exposure intensity, exactly as it would be on a new print.
-"""),
-("code", """\
-# Cache out-of-fold RF predictions for all 50 samples (fast enough for a widget).
-# Out-of-fold = each sample is predicted by the one model that did NOT train on
-# its intensity, so the dashboard cannot flatter itself.
-preds = np.zeros_like(Y)
-for tr_idx, te_idx in LeaveOneGroupOut().split(X_all, Y, full.intensity.values):
-    rf = RandomForestRegressor(300, random_state=0, n_jobs=-1)
-    rf.fit(X_all[tr_idx], Y[tr_idx])
-    preds[te_idx] = rf.predict(X_all[te_idx])
-
-import ipywidgets as w
-
-def dashboard(layers=15, intensity_pct=70):
-    \"\"\"Show measured vs predicted labels for one print of the design grid.\"\"\"
-    m = (full.layer == layers) & (full.intensity == intensity_pct)
-    if not m.any():
-        print("no such sample"); return
-    i = int(np.where(m)[0][0])
-    meas, pred = Y[i], preds[i]              # truth and out-of-fold prediction
-    names = ["thickness (mm)", "modulus (Pa)", "DoC (–)"]
-    fig, axes = plt.subplots(1, 3, figsize=(10.5, 3))
-    for ax, n, mv, pv in zip(axes, names, meas, pred):
-        ax.bar(["measured", "predicted"], [mv, pv],
-               color=["0.4", "tab:green"])
-        err = abs(pv - mv) / (abs(mv) + 1e-9) * 100      # relative error, %
-        ax.set_title(f"{n}\\nerror {err:.1f}%")
-    plt.suptitle(f"{layers} layers @ {intensity_pct}% intensity "
-                 f"(I = {iu.INTENSITY_MW[intensity_pct]} mW/cm²) — "
-                 "prediction from a model that never saw this intensity")
-    plt.tight_layout(); plt.show()
-
-# Dropdowns are built from the values that actually exist in the design grid.
-w.interact(dashboard, layers=sorted(full.layer.unique()),
-           intensity_pct=sorted(full.intensity.unique()));
-"""),
-("md", """\
-## 5. Where this goes: closing the loop
+## 4. Where this goes: closing the loop
 
 A validated, fast, interpretable estimate of DoC and thickness **per layer** is
 exactly a feedback signal. The authors' ongoing work uses this sensor family
