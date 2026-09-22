@@ -1225,9 +1225,10 @@ scenario for a real sensor.
 
 ## 3. The model — three-branch attention fusion
 
-![architecture](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/model_architecture.png)
+<img src="https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/model_architecture.png"
+     alt="model architecture" style="max-width:100%;height:auto">
 
-*The paper's full architecture. Each input group gets its own branch, the
+*The paper's full architecture (Fig. 7). Each input group gets its own branch, the
 branch outputs are concatenated, an attention gate reweights that vector, and a
 shared head predicts all three targets at once.*
 
