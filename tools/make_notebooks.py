@@ -1581,11 +1581,37 @@ The model recovered the division of labor the features were designed for.
 
 ## 3. How fragile is it? Noise robustness
 
+**The question.** The model was trained on clean laboratory data. On a real
+machine the sensor degrades: couplant dries out, the lamp ages, the room warms
+up, the digitizer picks up electrical noise. Every one of those makes the
+measured features slightly wrong. How much wrongness can the model absorb
+before its predictions stop being useful?
+
+**Where exactly the noise goes.** We perturb the **344 feature values of the
+held-out prints, at prediction time** — nothing else:
+
+- **perturbed:** the feature vector handed to the trained model when it is asked
+  to predict a print it has never seen;
+- **not perturbed:** the training data (the model is trained once, on clean
+  features, and never sees a noisy number), the labels, and the raw waveforms —
+  we corrupt the extracted features, not the A-scans.
+
+**How a "5% level" is defined.** For each of the 344 columns we take the mean
+magnitude of that column across the dataset and use 5% of it as the standard
+deviation of a Gaussian draw, added independently to every feature of every test
+print. Scaling per column is what makes the number meaningful: 5% has to mean
+the same amount of damage to a ToF of about 1 µs and to a centre frequency of
+about 5×10⁶ Hz. Because each draw is random, every level is repeated five times
+and the error bars show the spread across those repetitions.
+
+> Honest limitation: real degradation would distort the waveform and therefore
+> move many features *together*, while this test moves each one independently.
+> It is a proxy for sensor quality, not a simulation of a specific fault.
+
 ---
 
 **Input** — the full 344-dimensional `X_all` and the labels `Y`, plus a
-per-column magnitude scale so that "5% noise" means the same thing for a ToF in
-microseconds and a frequency in hertz.
+per-column magnitude scale (`scale`) computed as described above.
 
 **What this cell does** — repeats the LOIO evaluation while adding Gaussian
 noise to the **test** features only, at several levels, five repetitions each.
