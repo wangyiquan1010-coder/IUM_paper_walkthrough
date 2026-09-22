@@ -570,6 +570,22 @@ on common axes.
 quantity measured *during* printing, without touching the part. Both curves rise
 with the same overall geometry-driven trend, and the strongly cured print sits
 slightly lower because its waves travel faster.
+
+> **Which point of the echo do you call its arrival?** It matters, and it is the
+> one place where these curves differ from the published ones. An echo is a
+> burst several oscillations long, so "the arrival" has to be defined by
+> convention: the first rise above the noise, the largest peak, a zero crossing.
+> The tracker here takes the **maximum of the smoothed envelope**, i.e. the
+> centre of the burst, which is the easiest rule to write in a few lines. The
+> paper uses an earlier feature of the same burst, so **our absolute ToF runs
+> about 0.1 µs high** — roughly one period of the 10 MHz probe — and the gap
+> widens slightly in the deepest layers, where attenuation reshapes the burst.
+>
+> Everything that depends on *differences* is unaffected: against the paper's
+> stored values these curves correlate at r ≈ 0.999, and every trend and slope
+> you read off them is the same. If you ever compare an absolute number here
+> with one in the article, subtract that offset — and remember that any ToF
+> measurement is only as meaningful as the pick convention behind it.
 """),
 ("code", """\
 fig, ax = plt.subplots(figsize=(7, 4.2))
