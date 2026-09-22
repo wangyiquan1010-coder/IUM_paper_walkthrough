@@ -585,18 +585,6 @@ ax.set(xlabel="layer index", ylabel="ToF(B1→B2)  (µs)",
 ax.legend(); ax.grid(alpha=0.3); plt.tight_layout(); plt.show()
 """),
 ("md", """\
-## Exercises
-
-1. Zoom the waterfall into layers 1–3 of the I1 sample. Why is B2 hard to
-   separate from B1 for very thin parts? What does this imply for monitoring
-   the first layers of any print?
-2. Using `track30`, estimate the average ToF increment per layer, and — assuming
-   a 100 µm layer thickness — compute the effective sound speed in the part.
-   Compare it with water (~1.48 mm/µs). *(hint: ToF is a round trip.)*
-3. In the race animation, the I1 sample's B2 amplitude stays higher than I7's
-   throughout the print, and the gap widens with depth. Offer a physical
-   explanation (think attenuation per unit of cured path).
-
 **Next notebook:** we turn these observations into *features* — designed on a
 two-scale physical framework.
 """),
@@ -1732,7 +1720,7 @@ photopolymerization. Additive Manufacturing, 105300.*
 for fname, cells, title in [
         ("01_ultrasound_meets_3dprinting.ipynb", nb1, "NB1"),
         ("02_physics_informed_features.ipynb", nb2, "NB2"),
-        ("03_learning_and_leakage.ipynb", nb3, "NB3"),
+        ("03_model_and_training.ipynb", nb3, "NB3"),
         ("04_interpretation_and_deployment.ipynb", nb4, "NB4")]:
     path = os.path.join(NBDIR, fname)
     nbf.write(nb(cells, title), path)

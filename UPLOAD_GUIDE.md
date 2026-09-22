@@ -23,7 +23,7 @@
 4. **验证**：打开 README 里的 Notebook 1 徽章 → Colab 打开 → Runtime → Run all
    → 第一个 cell 会自动 clone 仓库并切换目录，全程应无报错。
    Notebook 3 建议先 Runtime → Change runtime type → **T4 GPU**（训练 ~4 分钟；
-   纯 CPU 约 20–30 分钟，也能跑）。
+   纯 CPU 约 20–30 分钟，也能跑）。Notebook 1、2、4 都在一分钟以内。
 
 ## 课堂使用建议
 

@@ -13,25 +13,31 @@ A-scans to a physics-informed, leak-free machine-learning "soft sensor" that
 predicts part thickness, storage modulus, and degree of conversion — in real
 time, from sound alone.
 
+Every code cell is preceded by a short **Input / What this cell does / Output**
+note saying which file or table it reads, what it computes, and which later cell
+uses the result, and the code itself is commented for readers new to ultrasound
+or to machine learning.
+
 ## The notebooks
 
 | # | Notebook | You will learn | Highlights |
 |---|---|---|---|
-| 1 | `01_ultrasound_meets_3dprinting` | reading A-scans; B1/B2/B3 echoes; ToF | layer-by-layer **waveform animation**; I1-vs-I7 "race"; interactive 3D waterfall; waveform browser widget |
-| 2 | `02_physics_informed_features` | the two-scale framework; 11 layer-wise descriptors | **within-layer curing animation**; rebuilding features from raw data; design-grid heatmaps |
-| 3 | `03_learning_and_leakage` | 344-d representation; **data leakage**; LOIO CV; attention-fusion network | live leakage demo (random split vs LOIO) — a true peer-review story; full LOIO training run |
-| 4 | `04_interpretation_and_deployment` | attention gates; feature importance; robustness | gate heatmaps ("does sensing beat the recipe?"); **virtual-sensor dashboard** |
+| 1 | `01_ultrasound_meets_3dprinting` | reading A-scans; the B1 / B2 / B3 echoes; time of flight | layer-by-layer **waveform animation**; weak-cure vs strong-cure "race"; interactive 3D waterfall with a fixed starting view; waveform browser widget |
+| 2 | `02_physics_informed_features` | the two-scale framework; all 11 layer-wise descriptors, computed from raw samples with their formulas | **within-layer curing animation**, normalised so the two prints are comparable; design-grid heatmaps over all 50 prints |
+| 3 | `03_model_and_training` | the 344-d representation; why the train/test split decides everything; the attention-fusion network | random split vs **leave-one-intensity-out**, measured side by side; full LOIO training run; the paper's architecture figure |
+| 4 | `04_interpretation_and_deployment` | reading attention gates; feature importance; robustness | the fusion forward pass and **gate = sigmoid(W₂·ReLU(W₁·x))** written out by hand; permutation importance; sensor-noise degradation |
 
-Open in Colab (live once the repo is pushed to GitHub):
+Open in Colab:
 
 - [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/01_ultrasound_meets_3dprinting.ipynb) Notebook 1
 - [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/02_physics_informed_features.ipynb) Notebook 2
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/03_learning_and_leakage.ipynb) Notebook 3
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/03_model_and_training.ipynb) Notebook 3
 - [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/04_interpretation_and_deployment.ipynb) Notebook 4
 
 Everything (code + 12 MB of data) ships in this repository — no extra downloads.
-Notebook 3's training runs in ~4 min on a Colab GPU (Runtime → Change runtime
-type → T4 GPU) or ~20–30 min on CPU with the default classroom settings.
+Notebooks 1, 2 and 4 run in well under a minute each. Notebook 3 trains the
+network on all ten folds: ~4 min on a Colab GPU (Runtime → Change runtime type
+→ T4 GPU), or ~20–30 min on CPU with the default classroom settings.
 
 ## Repository layout
 
@@ -43,9 +49,13 @@ figs/        figures from the paper used as illustrations
 tools/       extract_teaching_data.py, make_notebooks.py (maintainers only)
 ```
 
+`tools/make_notebooks.py` is the source of truth for the notebooks: edit it,
+re-run it, then re-execute the notebooks rather than editing the `.ipynb` files
+by hand.
+
 ## Dataset (teaching subset)
 
-- 50 printed cylinders (5 layer counts × 10 exposure intensities) — full
+- 50 printed cylinders (5 layer counts × 10 exposure intensities) — the full
   **feature table** (11 physics-informed descriptors × 30 layer slots) and
   **labels** (Keyence thickness, rheometer storage modulus, Raman DoC).
 - Raw waveforms for **three representative samples** (15 L @ I1, 15 L @ I7,
@@ -54,8 +64,13 @@ tools/       extract_teaching_data.py, make_notebooks.py (maintainers only)
 
 ## For instructors
 
-Notebook 1 ends with exercises. The series is designed for two 75-minute
-sessions (NB1–2, NB3–4).
+The series is designed for two 75-minute sessions (NB1–2, NB3–4). Notebook 3 is
+the one to run ahead of class if you want its training output ready.
+
+Results are reproduced, not quoted: the classroom budget (60 epochs, one seed)
+gives LOIO R² ≈ 0.98 / 0.80 / 0.72 against the paper's 0.985 / 0.832 / 0.757.
+Numbers shift slightly with hardware and seed, and the notebooks say so where it
+matters.
 
 ## License & citation
 
