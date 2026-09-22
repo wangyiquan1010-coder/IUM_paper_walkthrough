@@ -30,10 +30,10 @@ or to machine learning.
 
 Open in Colab:
 
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/01_ultrasound_meets_3dprinting.ipynb) Notebook 1
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/02_physics_informed_features.ipynb) Notebook 2
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/03_model_and_training.ipynb) Notebook 3
-- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_teaching_colab/blob/main/notebooks/04_interpretation_and_deployment.ipynb) Notebook 4
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_paper_walkthrough/blob/main/notebooks/01_ultrasound_meets_3dprinting.ipynb) Notebook 1
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_paper_walkthrough/blob/main/notebooks/02_physics_informed_features.ipynb) Notebook 2
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_paper_walkthrough/blob/main/notebooks/03_model_and_training.ipynb) Notebook 3
+- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wangyiquan1010-coder/IUM_paper_walkthrough/blob/main/notebooks/04_interpretation_and_deployment.ipynb) Notebook 4
 
 Everything (code + 12 MB of data) ships in this repository — no extra downloads.
 Notebooks 1, 2 and 4 run in well under a minute each. Notebook 3 trains the

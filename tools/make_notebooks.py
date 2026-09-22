@@ -22,8 +22,8 @@ BOOT = '''\
 import os, sys
 
 if "google.colab" in sys.modules and not os.path.exists("src"):
-    !git clone -q https://github.com/wangyiquan1010-coder/IUM_teaching_colab.git
-    %cd IUM_teaching_colab
+    !git clone -q https://github.com/wangyiquan1010-coder/IUM_paper_walkthrough.git
+    %cd IUM_paper_walkthrough
 
 # Walk up the folder tree until we find the repository root (the folder that
 # contains src/). This makes every later path such as "data/feature11.csv"
@@ -50,7 +50,7 @@ SETUP_MD = """\
 ### Before we run anything: the setup cell
 
 **Input** — nothing from your side. On Google Colab this cell downloads the
-course repository (`github.com/wangyiquan1010-coder/IUM_teaching_colab`), which
+course repository (`github.com/wangyiquan1010-coder/IUM_paper_walkthrough`), which
 ships *all* the data used in this series; running locally, it just finds the
 repository folder you already have.
 
@@ -103,7 +103,7 @@ turns the printer into its own sensor. In this notebook you will:
 3. watch the part grow — literally — through waveform animations;
 4. extract your first physical measurement: the **time of flight (ToF)**.
 
-![system](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/system_overview.png)
+![system](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_paper_walkthrough/main/figs/system_overview.png)
 *The DLP-IUM platform: the Rexolite printhead doubles as the transducer's delay
 line, so the part is monitored continuously without interrupting printing.*
 """),
@@ -604,7 +604,7 @@ Raw waveforms have 62,509 points; we have only 50 printed samples. Learning
 end-to-end from raw signals is hopeless at this scale (the paper proves it —
 Case 1 fails). Instead, the paper *designs* features on a physical map:
 
-![two-scale](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/two_scale_framework.png)
+![two-scale](https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_paper_walkthrough/main/figs/two_scale_framework.png)
 
 - **Across layers**: each layer lengthens the acoustic path *and* stiffens the
   material → ToF, amplitude ratio, spectral features encode geometry + material
@@ -1213,7 +1213,7 @@ scenario for a real sensor.
 
 ## 3. The model — three-branch attention fusion
 
-<img src="https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_teaching_colab/main/figs/model_architecture.png"
+<img src="https://raw.githubusercontent.com/wangyiquan1010-coder/IUM_paper_walkthrough/main/figs/model_architecture.png"
      alt="model architecture" style="max-width:100%;height:auto">
 
 *The paper's full architecture (Fig. 7). Each input group gets its own branch, the
