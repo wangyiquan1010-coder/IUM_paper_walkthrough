@@ -1683,31 +1683,37 @@ for i, l in enumerate(iu.LABEL_COLS):
                                 for nv in levels))
 """),
 ("md", """\
-**Reading the curves.**
+### So is this a good result or a bad one?
 
-At **0% noise** the three values are just the honest LOIO baseline — the same
-numbers the Random Forest reached in Notebook 3 (≈0.84 thickness, ≈0.45
-modulus, ≈0.31 DoC). Everything to the right of that point shows what a
-degraded sensor would cost.
+**Good — and the reason is the shape of the curves, not their height.**
 
-*Thickness* declines slowly and smoothly. It rides mainly on ToF, which is a
-large, well-separated quantity — a few percent of scatter on each feature
-shifts the arrival times far too little to confuse the model.
+First, read the heights correctly. This experiment uses the fast Random Forest,
+not the network, so the 0% point sits at ≈0.84 / 0.45 / 0.31 — exactly the
+Random-Forest LOIO baseline from Notebook 3. The deployed network reached
+0.98 / 0.80 / 0.72 on the same protocol. The low modulus and DoC values here
+belong to the surrogate, not to the sensor. What this section is testing is
+**how much each curve drops**, not where it starts.
 
-*Modulus* and *DoC* start low and stay roughly flat, with error bars wide enough
-to cover most of the change. That flatness says something useful: these two are
-**not limited by measurement noise**. If they were, adding noise would visibly
-hurt them. Their ceiling comes from elsewhere — how much cure information the
-features carry at all, how few samples we have, and the uncertainty in the Raman
-and rheometer labels themselves. Buying a quieter digitizer would not fix them;
-more prints and better labels might.
+By that measure the model holds up well. Over the whole range tested, thickness
+falls only from 0.839 to 0.759 — a tenth of its value for a tenfold-noisier
+sensor. Modulus and DoC move within their error bars, i.e. not detectably at
+all.
 
-The important negative result is that **nothing falls off a cliff**. A model
-that had latched onto one fragile feature would collapse as soon as that feature
-was perturbed. Gradual decline across the board means the prediction rests on
-broad trends spread over many features, which is exactly the behaviour you want
-from something that will run unattended on a machine whose couplant, lamp and
-temperature all drift.
+**What a bad result would have looked like:** a cliff. If the model had keyed on
+one delicate quantity — say the exact position of a single peak — then the first
+time that number was perturbed the prediction would have collapsed, and the
+curve would fall off a step rather than drift down. There is no such step here,
+which means the prediction is spread across many features that degrade
+independently, so perturbing any one of them costs little. That is the property
+you need from an instrument that will run unattended while the couplant dries,
+the lamp ages and the room warms up.
+
+**What it does not say.** A flat line at a low value is not excellence — for
+modulus and DoC it only means measurement noise is *not* the binding
+constraint. Their ceiling lies elsewhere: how much cure information the features
+carry at all, how few prints we have, and the uncertainty in the Raman and
+rheometer labels themselves. A quieter digitizer would not raise them; more
+prints and better labels might.
 
 ## 4. Where this goes: closing the loop
 
